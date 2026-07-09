@@ -27,6 +27,23 @@ from interaction import InteractionManager
 
 
 def main():
+    try:
+        _main_loop()
+    except Exception as e:
+        import traceback
+        print("\n" + "=" * 50)
+        print("程序异常退出：")
+        print("=" * 50)
+        traceback.print_exc()
+        print("=" * 50)
+        try:
+            pygame.quit()
+        except Exception:
+            pass
+        sys.exit(1)
+
+
+def _main_loop():
     """主函数"""
     print("=" * 50)
     print("《留下的痕迹》 The Trace We Leave")
@@ -93,7 +110,7 @@ def main():
     # 当前轨迹可视化
     current_trajectory = []
     max_trajectory_points = 500
-    
+
     running = True
     while running:
         # 处理 Pygame 事件
@@ -111,7 +128,7 @@ def main():
                     target_object.reset_position()
                     current_trajectory.clear()
                     print("已清除所有痕迹")
-        
+
         # 检查 OpenCV 窗口事件
         key = cv2.waitKey(1) & 0xFF
         if key == 27:  # ESC 键

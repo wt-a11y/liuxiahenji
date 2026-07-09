@@ -71,10 +71,20 @@ class FlowTexture:
         # 位置
         self.x = center_x
         self.y = center_y
-        
+
         # 影响状态
         self.is_influenced = False
         self.influence_intensity = 0.0
+
+        # === 内部纹理"脉络"系统 ===
+        # memory_level 增加时，在现有曲线上叠加琥珀色脉络
+        # 代表"外部经历融入"生命体的视觉
+        # - 脉络仅是高亮部分曲线，不创建新的曲线/粒子
+        # - 不覆盖原有纹理（基础曲线始终完整绘制）
+        # - 脉络位置缓慢漂移，呈现生命感
+        self.vein_phase_a = random.uniform(0, 1)  # 1st vein position on curve (0-1)
+        self.vein_phase_b = random.uniform(0, 1)  # 2nd vein position (L3+ 才使用)
+        self.vein_drift_speed = random.uniform(0.0008, 0.0022)  # 脉络漂移速度
         
     def update(self, center_x: float, center_y: float, is_influenced: bool,
                flow_bias_angle: float = None, flow_bias_intensity: float = 0.0):
@@ -1086,6 +1096,62 @@ class TargetObject:
         self.impact_level = 0.0  # 0.0-1.0 累积影响水平（用于视觉反馈）
         self.absorbed_count = 0  # 实际进入生命体的碎片数量（用于颜色分阶段）
         self.fragment_count = 0  # 累计吸收的碎片数量（核心颜色变化依据，不衰减）
+
+        # === 记忆等级系统 ===
+        # 根据累计吸收的碎片数量计算生命状态等级（5级：0-4）
+        # 当前等级（不修改任何绘制/颜色效果，仅作为状态标签）
+        self.memory_level = 0
+        # 上一次记录的等级（用于检测等级变化并输出日志）
+        self._last_logged_level = 0
+
+        # === 记忆等级颜色系统 ===
+        # 5个等级的核心颜色锚点（用于生命体主色 / 外膜）
+        # 设计：每级之间有清晰可辨的色调过渡，让"经历"成为可读的故事
+        # L0: 冷蓝 → L1: 薄荷绿 → L2: 青绿 → L3: 琥珀 → L4: 暖橙
+        # 注意：L1/L2 故意与 L0 拉开差距，避免"看不出中间状态"
+        self._memory_level_core_stops = [
+            (160, 200, 230),  # Level 0: 冷蓝（原始）
+            (130, 220, 195),  # Level 1: 薄荷绿（明显比 L0 绿）
+            (170, 215, 170),  # Level 2: 青绿（明显的青绿）
+            (200, 185, 160),  # Level 3: 琥珀
+            (215, 170, 135),  # Level 4: 暖橙
+        ]
+        # 5个等级的内部纹理颜色锚点（内部纹理线条，更鲜明一些）
+        self._memory_level_texture_stops = [
+            (200, 220, 240),  # Level 0: 冷蓝
+            (160, 235, 195),  # Level 1: 鲜明薄荷绿
+            (195, 230, 165),  # Level 2: 黄绿
+            (225, 195, 140),  # Level 3: 琥珀
+            (240, 175, 115),  # Level 4: 暖橙
+        ]
+        # 当前实际显示的核心/纹理颜色（每帧缓慢插值）
+        self._current_core_color = [160.0, 200.0, 230.0]
+        self._current_texture_color = [200.0, 220.0, 240.0]
+        # 等级颜色过渡速度（比主颜色更慢，避免"升级感"）
+        # 0.002 ≈ 30秒才接近目标（让每级有足够时间沉淀）
+        # 之前 0.005 时用户感觉"颜色追着等级跑"，现在大幅放慢
+        self._memory_color_speed = 0.002
+
+        # === 内部纹理"脉络"颜色系统 ===
+        # 在基础纹理曲线之上叠加暖色脉络（记忆融入视觉）
+        # 设计：脉络色与基底纹理同色系渐进变化
+        # L0：冷蓝（与基底一致）
+        # L1：浅暖绿（与 L1 薄荷绿基底呼应）
+        # L2：暖绿（连接绿与琥珀）
+        # L3：琥珀色
+        # L4：稳定暖橙
+        self._memory_level_vein_stops = [
+            (185, 210, 225),  # Level 0: 冷蓝（与基底冷色一致，不可见）
+            (170, 230, 190),  # Level 1: 浅暖绿（呼应 L1 薄荷绿）
+            (215, 220, 170),  # Level 2: 暖绿（连接绿与琥珀）
+            (230, 180, 135),  # Level 3: 琥珀
+            (240, 165, 100),  # Level 4: 稳定暖橙
+        ]
+        self._current_vein_color = [185.0, 210.0, 225.0]
+        # 脉络强度（控制覆盖比例 + 不透明度）
+        # L0=0, L1=0.15 (极弱), L2=0.40 (显形), L3=0.65 (建立), L4=0.85 (主导)
+        # 调低 L1 强度以避免"第一次吸收就明显跳变"
+        self._memory_level_vein_strength = [0.0, 0.15, 0.40, 0.65, 0.85]
         
         # 当前实际显示颜色（用于平滑过渡）
         # 初始冷蓝色 (160, 200, 230)
@@ -1220,18 +1286,28 @@ class TargetObject:
         self.absorbed_count += 1
         # 累计吸收的碎片数量（核心颜色变化依据，不衰减）
         self.fragment_count += 1
-        
+
+        # === 更新记忆等级（不修改任何绘制/颜色效果）===
+        new_level = self.calculate_memory_level()
+        leveled_up = new_level != self.memory_level
+        self.memory_level = new_level
+
         # 计算当前color_progress（基于fragment_count，但更平滑的分段）
         new_progress = self._calculate_color_progress(self.fragment_count)
-        
+
         # 计算目标颜色（基于color_progress在5个关键色之间插值）
         target_color = self._calculate_target_color_from_progress(new_progress)
-        
+
         # 调试输出：每次碎片进入时打印
         print(f"Fragment absorbed: count = {self.fragment_count}")
         print(f"  color_progress = {new_progress:.3f}")
         print(f"  target_color   = {tuple(int(c) for c in target_color)}")
         print(f"  current_color  = {tuple(int(c) for c in self.current_color)}")
+        # 记忆等级日志：仅在等级变化时输出，便于测试
+        if leveled_up:
+            print(f"  >>> memory_level UP: {self._last_logged_level} -> {self.memory_level}  "
+                  f"(fragment_count = {self.fragment_count})")
+            self._last_logged_level = self.memory_level
         
         # 标记为被影响状态
         self.is_currently_influenced = True
@@ -1329,6 +1405,125 @@ class TargetObject:
             oldest.intensity = min(1.0, oldest.intensity + intensity * 0.15)
             self.structure_changes += 1
     
+    def calculate_memory_level(self) -> int:
+        """
+        根据当前 fragment_count 计算记忆等级 (0 - 4)
+
+        等级映射（已大幅扩展阈值，让每级停留足够久）：
+        - Level 0: 0 个碎片                （原始状态）
+        - Level 1: 1-8 个碎片              （首次注入绿色）
+        - Level 2: 9-25 个碎片             （青绿 + 暖色融合）
+        - Level 3: 26-55 个碎片            （琥珀色已建立）
+        - Level 4: 56 个及以上              （稳定暖橙）
+
+        设计原因：让每级有"沉淀时间"，颜色能稳定显示一段时间后再过渡到下一级。
+        配合 _memory_color_speed = 0.002（约30s达到90%目标），
+        即使持续吸收碎片，颜色也不会"追着等级跑"。
+
+        注意：
+        - 该函数只计算等级，不修改任何绘制/颜色效果
+        - 不修改 fragment 动画
+        - 保留现有吞噬逻辑
+        - 通过 self.memory_level 暴露当前等级，供后续逻辑使用
+
+        Returns:
+            等级值 (0-4)
+        """
+        count = self.fragment_count
+
+        if count <= 0:
+            return 0
+        elif count <= 8:
+            return 1
+        elif count <= 25:
+            return 2
+        elif count <= 55:
+            return 3
+        else:
+            return 4
+
+    def calculate_memory_level_colors(self, level: int) -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
+        """
+        根据记忆等级计算核心色 + 内部纹理色（在相邻等级之间 smoothstep 插值）
+
+        即使 level 是整数，相邻等级之间也做插值（保持函数对将来小数值兼容），
+        当前整数 level 下输出 = stops[level]
+
+        设计原则：
+        - 保留生命体冷色基调
+        - 不直接切换颜色（通过 _current_core_color / _current_texture_color 缓慢插值）
+        - 核心色变化小（外膜感受），纹理色变化大（内部明显）
+        - 不出现纯黄色（保持有机感）
+
+        Args:
+            level: 记忆等级（0-4；超出范围自动 clamp）
+
+        Returns:
+            (core_rgb, texture_rgb) - 两组 RGB 浮点元组
+        """
+        lv = max(0.0, min(4.0, float(level)))
+        lower = int(math.floor(lv))
+        upper = min(4, lower + 1)
+        frac = lv - lower
+
+        # smoothstep 缓动 - 等级过渡更自然
+        smooth = frac * frac * (3.0 - 2.0 * frac)
+
+        # 核心色插值
+        c_a = self._memory_level_core_stops[lower]
+        c_b = self._memory_level_core_stops[upper]
+        core = (
+            c_a[0] + (c_b[0] - c_a[0]) * smooth,
+            c_a[1] + (c_b[1] - c_a[1]) * smooth,
+            c_a[2] + (c_b[2] - c_a[2]) * smooth,
+        )
+
+        # 内部纹理色插值
+        t_a = self._memory_level_texture_stops[lower]
+        t_b = self._memory_level_texture_stops[upper]
+        texture = (
+            t_a[0] + (t_b[0] - t_a[0]) * smooth,
+            t_a[1] + (t_b[1] - t_a[1]) * smooth,
+            t_a[2] + (t_b[2] - t_a[2]) * smooth,
+        )
+
+        return core, texture
+
+    def calculate_memory_level_vein_color(self, level: int) -> Tuple[float, float, float]:
+        """
+        根据记忆等级计算内部纹理"脉络"颜色（暖琥珀色）
+
+        脉络色与核心/纹理色不同：它是"经历融入"的高亮色，
+        即使在 L4 暖橙基底上，脉络色也会更饱和的橙色，
+        强化"新结构"视觉。
+
+        Returns:
+            脉络 RGB 浮点元组
+        """
+        lv = max(0.0, min(4.0, float(level)))
+        lower = int(math.floor(lv))
+        upper = min(4, lower + 1)
+        frac = lv - lower
+        smooth = frac * frac * (3.0 - 2.0 * frac)
+
+        v_a = self._memory_level_vein_stops[lower]
+        v_b = self._memory_level_vein_stops[upper]
+        return (
+            v_a[0] + (v_b[0] - v_a[0]) * smooth,
+            v_a[1] + (v_b[1] - v_a[1]) * smooth,
+            v_a[2] + (v_b[2] - v_a[2]) * smooth,
+        )
+
+    def get_memory_level_vein_strength(self, level: int) -> float:
+        """
+        根据记忆等级获取脉络强度 (0.0 - 0.90)
+
+        L0=0, L1=0.25, L2=0.45, L3=0.70, L4=0.90
+        离散等级直接读取；外部若传入小数值可被 smoothstep 平滑
+        """
+        lv = max(0, min(4, int(level)))
+        return self._memory_level_vein_strength[lv]
+
     def _calculate_color_progress(self, fragment_count: int) -> float:
         """
         根据累计碎片数量计算颜色变化进度 (0.0 - 1.0)
@@ -1418,16 +1613,21 @@ class TargetObject:
         # 同步fragment_count到membrane
         self.membrane._target_fragment_count = self.fragment_count
 
-        # 1. 根据fragment_count更新color_progress（0.0-1.0）
-        self.color_progress = self._calculate_color_progress(self.fragment_count)
+        # === 记忆等级颜色（替换原 fragment_count-based 颜色系统）===
+        # 根据 memory_level 计算核心/纹理目标颜色
+        core_target, tex_target = self.calculate_memory_level_colors(self.memory_level)
+        # 脉络目标颜色
+        vein_target = self.calculate_memory_level_vein_color(self.memory_level)
 
-        # 2. 根据color_progress计算目标颜色（在5个关键色之间连续插值）
-        target_color = self._calculate_target_color_from_progress(self.color_progress)
-
-        # 3. 当前颜色向目标颜色缓慢插值（生命体慢慢适应）
-        # 每帧只移动1%差距，需要约100帧(1.7秒)接近目标
+        # 缓慢插值（避免直接切换，每帧仅移动约 0.5% 差距）
         for i in range(3):
-            self.current_color[i] += (target_color[i] - self.current_color[i]) * self.color_transition_speed
+            self._current_core_color[i] += (core_target[i] - self._current_core_color[i]) * self._memory_color_speed
+            self._current_texture_color[i] += (tex_target[i] - self._current_texture_color[i]) * self._memory_color_speed
+            self._current_vein_color[i] += (vein_target[i] - self._current_vein_color[i]) * self._memory_color_speed
+
+        # 同步到 current_color（保持向后兼容：membrane 仍通过 _current_display_color 读取）
+        for i in range(3):
+            self.current_color[i] = int(self._current_core_color[i])
 
         # 4. 同步当前颜色到membrane（实际显示颜色）
         self.membrane._current_display_color = tuple(self.current_color)
@@ -1497,13 +1697,10 @@ class TargetObject:
         if not self.memory_layers:
             return
 
-        # 内部颜色 - 与基础纹理色系一致
-        r0, g0, b0 = 200, 220, 240
-        r1, g1, b1 = 255, 200, 150
-        t = self.impact_level
-        r = int(r0 + (r1 - r0) * t)
-        g = int(g0 + (g1 - g0) * t)
-        b = int(b0 + (b1 - b0) * t)
+        # 内部颜色 - 与基础纹理色系一致（由 memory_level 缓慢插值）
+        r = int(self._current_texture_color[0])
+        g = int(self._current_texture_color[1])
+        b = int(self._current_texture_color[2])
 
         for layer in self.memory_layers:
             if layer.growth < 0.05:
@@ -1608,55 +1805,94 @@ class TargetObject:
     def _draw_flow_textures(self, screen: pygame.Surface):
         """
         绘制内部流动纹理
-        
+
         连续的曲线纹理，不是离散光点
-        颜色随impact_level变化
-        
+        基础颜色由 memory_level 缓慢插值得到（保留原有冷色基调）
+        在 L1+ 叠加琥珀色"脉络"高亮，模拟"经历融入"生命体
+
         Args:
             screen: Pygame屏幕表面
         """
-        # 根据impact_level计算纹理颜色
-        # 基础：冷青色
-        r0, g0, b0 = 200, 220, 240
-        # 大量影响：暖琥珀色
-        r1, g1, b1 = 255, 200, 150
-        
-        t = self.impact_level
-        r = int(r0 + (r1 - r0) * t)
-        g = int(g0 + (g1 - g0) * t)
-        b = int(b0 + (b1 - b0) * t)
-        
+        # === 基础纹理颜色：由 memory_level 缓慢插值得到（替换原 impact_level 计算）===
+        r = int(self._current_texture_color[0])
+        g = int(self._current_texture_color[1])
+        b = int(self._current_texture_color[2])
+
+        # === 脉络颜色 + 强度（仅 L1+ 显示）===
+        vein_r = int(self._current_vein_color[0])
+        vein_g = int(self._current_vein_color[1])
+        vein_b = int(self._current_vein_color[2])
+        vein_strength = self.get_memory_level_vein_strength(self.memory_level)
+
         for texture in self.flow_textures:
             points = texture.get_points()
-            
-            if len(points) >= 2:
-                # 纹理强度
-                intensity = texture.get_intensity()
-                
-                # 纹理颜色（半透明，强度影响透明度）
-                alpha = int(80 * intensity)
-                color = (r, g, b, alpha)
-                
-                # 计算边界框
-                min_x = min(p[0] for p in points)
-                max_x = max(p[0] for p in points)
-                min_y = min(p[1] for p in points)
-                max_y = max(p[1] for p in points)
-                
-                width = int(max_x - min_x) + 10
-                height = int(max_y - min_y) + 10
-                
-                if width > 0 and height > 0:
-                    texture_surf = pygame.Surface((width, height), pygame.SRCALPHA)
-                    
-                    # 调整点坐标
-                    adjusted_points = [(p[0] - min_x + 5, p[1] - min_y + 5) for p in points]
-                    
-                    # 绘制曲线（线条）
-                    pygame.draw.lines(texture_surf, color, False, adjusted_points, 2)
-                    
-                    # 绘制到屏幕
-                    screen.blit(texture_surf, (min_x - 5, min_y - 5))
+
+            if len(points) < 2:
+                continue
+
+            # 纹理强度
+            intensity = texture.get_intensity()
+            if intensity <= 0.05:
+                continue
+
+            # 计算边界框
+            min_x = min(p[0] for p in points)
+            max_x = max(p[0] for p in points)
+            min_y = min(p[1] for p in points)
+            max_y = max(p[1] for p in points)
+
+            width = int(max_x - min_x) + 10
+            height = int(max_y - min_y) + 10
+
+            if width <= 0 or height <= 0:
+                continue
+
+            texture_surf = pygame.Surface((width, height), pygame.SRCALPHA)
+            adjusted_points = [(p[0] - min_x + 5, p[1] - min_y + 5) for p in points]
+
+            # 1) 基础纹理曲线（始终完整绘制，不被覆盖）
+            base_alpha = int(80 * intensity)
+            base_color = (r, g, b, base_alpha)
+            pygame.draw.lines(texture_surf, base_color, False, adjusted_points, 2)
+
+            # 2) 脉络高亮（L1+ 出现） - 在原曲线之上叠加琥珀色片段
+            #    脉络位置缓慢漂移，覆盖比例随 memory_level 增加
+            #    2nd vein 仅 L3+ 出现，模拟"新结构"形成
+            if vein_strength > 0.02:
+                # 漂移脉络位置（每次绘制都移动一点点）
+                texture.vein_phase_a = (texture.vein_phase_a + texture.vein_drift_speed) % 1.0
+                texture.vein_phase_b = (texture.vein_phase_b + texture.vein_drift_speed * 0.73) % 1.0
+
+                n = len(adjusted_points)
+                # 防御性 clamp（边界情况下保护 pygame.draw）
+                intensity = max(0.0, min(1.0, intensity))
+                # 脉络覆盖比例：0.20 (L1) → 0.45 (L4)
+                vein_width_pts = max(2, min(n - 1, int((0.20 + 0.25 * vein_strength) * n)))
+                # 脉络不透明度：80 (L1) → 160 (L4)；clamp 到 [0, 255]
+                vein_alpha = max(0, min(255, int((90 + 90 * vein_strength) * intensity)))
+
+                # 1st vein
+                start_a = int(texture.vein_phase_a * n) - vein_width_pts // 2
+                start_a = max(0, start_a)
+                end_a = min(n, start_a + vein_width_pts)
+                if end_a - start_a >= 2:
+                    vein_color_a = (vein_r, vein_g, vein_b, vein_alpha)
+                    pygame.draw.lines(texture_surf, vein_color_a, False,
+                                      adjusted_points[start_a:end_a], 2)
+
+                # 2nd vein（L3+ 新结构出现）
+                if self.memory_level >= 3:
+                    start_b = int(texture.vein_phase_b * n) - vein_width_pts // 2
+                    start_b = max(0, start_b)
+                    end_b = min(n, start_b + vein_width_pts)
+                    # 避免两条脉络完全重叠
+                    if end_b - start_b >= 2 and abs(start_b - start_a) > vein_width_pts // 2:
+                        vein_color_b = (vein_r, vein_g, vein_b, int(vein_alpha * 0.85))
+                        pygame.draw.lines(texture_surf, vein_color_b, False,
+                                          adjusted_points[start_b:end_b], 2)
+
+            # 绘制到屏幕
+            screen.blit(texture_surf, (min_x - 5, min_y - 5))
     
     def get_position(self) -> Tuple[float, float]:
         """获取生命体位置"""
@@ -1694,6 +1930,13 @@ class TargetObject:
         self.impact_level = 0.0
         self.absorbed_count = 0
         self.fragment_count = 0
+        # 重置记忆等级
+        self.memory_level = 0
+        self._last_logged_level = 0
+        # 重置记忆等级颜色（回到 Level 0 冷色起点）
+        self._current_core_color = [160.0, 200.0, 230.0]
+        self._current_texture_color = [200.0, 220.0, 240.0]
+        self._current_vein_color = [185.0, 210.0, 225.0]
         self.is_currently_influenced = False
 
 
