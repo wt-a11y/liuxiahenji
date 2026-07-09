@@ -2,8 +2,14 @@
 
 一个基于计算机视觉的交互艺术项目。
 
-<img width="959" height="542" alt="屏幕截图 2026-07-09 164045" src="https://github.com/user-attachments/assets/fdeb5ba0-4ebe-456b-abbd-593c762aa223" />
-<img width="955" height="562" alt="image" src="https://github.com/user-attachments/assets/b5560274-ae9f-4ecf-898c-07a84b332125" />
+<img width="956" height="536" alt="屏幕截图 2026-07-10 033318" src="https://github.com/user-attachments/assets/8a6da7d5-7da8-4b67-ad7f-c3e862309fb6" />
+
+<img width="959" height="540" alt="屏幕截图 2026-07-10 033345" src="https://github.com/user-attachments/assets/109f2244-169a-4909-8dad-e1a3b50f2cdd" />
+
+<img width="953" height="530" alt="屏幕截图 2026-07-10 033405" src="https://github.com/user-attachments/assets/d5226c94-cf88-413e-bee4-9629f580b9f5" />
+
+<img width="959" height="538" alt="屏幕截图 2026-07-10 033413" src="https://github.com/user-attachments/assets/31a3ccb4-e527-47df-a502-a6a50fcaf043" />
+
 
 ## 核心概念
 
