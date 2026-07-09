@@ -2,6 +2,9 @@
 
 一个基于计算机视觉的交互艺术项目。
 
+<img width="959" height="542" alt="屏幕截图 2026-07-09 164045" src="https://github.com/user-attachments/assets/fdeb5ba0-4ebe-456b-abbd-593c762aa223" />
+<img width="955" height="562" alt="image" src="https://github.com/user-attachments/assets/b5560274-ae9f-4ecf-898c-07a84b332125" />
+
 ## 核心概念
 
 人的行为会留下不可见的影响。
