@@ -9,8 +9,8 @@ The Trace We Leave
 2. 获取手部数据
 3. 记录轨迹
 4. 判断动作结束
-5. 生成痕迹
-6. 影响目标对象
+5. 生成记忆碎片
+6. 碎片渗透影响目标对象
 
 运行：py -3.11 main.py
 """
@@ -71,18 +71,21 @@ def main():
     # 3. 初始化所有模块
     hand_tracker = HandTracker()           # 手部追踪
     behavior_analyzer = BehaviorAnalyzer() # 行为分析
-    particle_system = ParticleSystem()     # 粒子系统
-    target_object = TargetObject()         # 目标对象
+    particle_system = ParticleSystem()     # 记忆碎片系统
+    target_object = TargetObject()         # 有机体目标对象
     interaction_manager = InteractionManager()  # 交互管理
     
     # 设置交互管理器的目标对象
     interaction_manager.set_target(target_object)
+    # 设置记忆碎片的目标位置
+    particle_system.set_target(target_object.get_position())
     
     print("所有模块已初始化")
     print("=" * 50)
     print("操作说明：")
     print("  - 移动手部绘制轨迹")
-    print("  - 静止 0.8秒 → 动作结束 → 痕迹飞向目标")
+    print("  - 静止 0.8秒 → 动作结束 → 生成记忆碎片")
+    print("  - 碎片沉积 → 漂移 → 渗透 → 改变目标内部结构")
     print("  - ESC: 退出")
     print("  - C: 清除")
     print("=" * 50)
@@ -178,23 +181,38 @@ def main():
             action_dict = action_data.to_dict()
             print(f"\n动作结束: speed={action_dict['speed']:.2f}, distance={action_dict['distance']:.2f}")
             
-            # 6. 生成痕迹（粒子效果）
+            # 6. 生成记忆碎片
             if action_dict['trajectory'] and len(action_dict['trajectory']) >= 5:
-                particle_system.create_trace_from_trajectory(action_dict['trajectory'])
-            
-            # 7. 影响目标对象（痕迹投射物）
-            interaction_manager.process_action_end(action_dict)
+                particle_system.create_trace_from_trajectory(
+                    action_dict['trajectory'],
+                    action_dict['speed'],
+                    action_dict['distance']
+                )
             
             # 清空当前轨迹可视化
             current_trajectory.clear()
         
         # 更新所有模块
-        particle_system.update()
-        interaction_manager.update()
+        # 更新粒子系统（获取渗透数据）
+        penetrations = particle_system.update()
+        
+        # 检查碎片是否靠近膜边界（触发膜的扰动）
+        fragments_data = particle_system.get_fragments_data()
+        for fragment_data in fragments_data:
+            interaction_manager.check_membrane_approach(fragment_data)
+        
+        # 7. 处理渗透（改变目标内部结构）
+        if penetrations:
+            interaction_manager.process_penetrations(penetrations)
+        
+        # 更新目标对象
         target_object.update()
         
+        # 更新目标位置（目标可能移动）
+        particle_system.set_target(target_object.get_position())
+        
         # 渲染 Pygame 窗口
-        screen.fill((15, 15, 25))  # 深色背景
+        screen.fill((28, 26, 24))  # 暗暖灰背景（记忆色调）
         
         # 绘制当前轨迹（实时跟踪线）
         if len(current_trajectory) >= 2:
@@ -202,22 +220,23 @@ def main():
             if current_trajectory:
                 pygame.draw.circle(screen, (120, 200, 255), current_trajectory[-1], 6)
         
-        # 绘制粒子系统（数字痕迹）
+        # 绘制记忆碎片
         particle_system.draw(screen)
         
-        # 绘制交互投射物（飞向目标）
-        interaction_manager.draw(screen)
-        
-        # 绘制目标对象
+        # 绘制目标对象（有机体）
         target_object.draw(screen)
         
         # 显示状态信息
         info_lines = [
             f"Hand: {'Detected' if hand_position else 'None'}",
             f"Trajectory: {len(current_trajectory)} points",
-            f"Particles: {particle_system.get_particle_count()}",
-            f"Projectiles: {interaction_manager.get_projectile_count()}",
-            f"Target: {target_object.state} (impact: {target_object.impact_value:.2f})",
+            f"Memory Fragments: {particle_system.get_particle_count()}",
+            f"Penetrations: {interaction_manager.get_penetration_count()}",
+            f"Target: ({target_object.x:.0f}, {target_object.y:.0f})",
+            f"Cumulative Influence: {target_object.get_cumulative_influence():.2f}",
+            f"History: {target_object.get_history_length()}",
+            f"Flow Textures: {len(target_object.flow_textures)}",
+            f"Influenced: {target_object.is_currently_influenced}",
             f"Inactive: {behavior_analyzer.get_inactive_duration():.2f}s / 0.8s"
         ]
         
@@ -228,7 +247,7 @@ def main():
             y_offset += 25
         
         # 操作提示
-        hint_text = "Move hand -> Stop 0.8s -> Trace flies to target | ESC: Exit | C: Clear"
+        hint_text = "Move hand → Stop 0.8s → Fragments penetrate → Change target | ESC: Exit | C: Clear"
         hint_surface = font.render(hint_text, True, (120, 120, 120))
         screen.blit(hint_surface, (10, screen.get_height() - 30))
         
