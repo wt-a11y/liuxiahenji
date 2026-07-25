@@ -1246,12 +1246,12 @@ class TargetObject:
         # 颜色过渡速度（每帧插值比例）
         # 0.005 时约200帧(3.3秒)接近目标；0.01 时约100帧(1.7秒)
         self.color_transition_speed = 0.008  # 缓慢过渡，让每个阶段停留明显
-        
+
         # 颜色变化进度（0.0-1.0）
         # 由fragment_count经过分段映射得到
         self.color_progress = 0.0
         self.max_fragments_for_color = 40  # 达到40个碎片时color_progress=1.0（接近金色）
-        
+
         # 影响历史
         self.influence_history: List[Dict] = []
         
@@ -1799,7 +1799,7 @@ class TargetObject:
         all_calm = all(texture.influence_intensity < 0.05 for texture in self.flow_textures)
         if all_calm and self.membrane.deformation_factor < 0.05:
             self.is_currently_influenced = False
-    
+
     def draw(self, screen: pygame.Surface):
         """
         绘制生命体（多层叠加）
@@ -2150,7 +2150,7 @@ class TargetObject:
     def get_history_length(self) -> int:
         """获取影响历史长度"""
         return len(self.influence_history)
-    
+
     def reset_position(self):
         """重置位置和状态"""
         self.x = 640

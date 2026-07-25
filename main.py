@@ -20,6 +20,7 @@ import pygame
 import sys
 import os
 import math
+import time
 
 from hand_tracking import HandTracker
 from behavior_analysis import BehaviorAnalyzer
@@ -131,6 +132,9 @@ def _main_loop():
     gravity_field = GravityField()                      # 引力场
     status_bar = StatusBar(screen_w, screen_h)         # 状态栏
 
+    # 警觉 → 行为时间线标记为"重"在主循环中持续处理
+    # （见 personal_space 警觉联动处：只要在红圈内每 1.2s 追加一条"重"）
+
     # 3. 初始化所有模块
     hand_tracker = HandTracker()           # 手部追踪
     behavior_analyzer = BehaviorAnalyzer() # 行为分析
@@ -157,6 +161,13 @@ def _main_loop():
     current_trajectory = []
     max_trajectory_points = 500
     frame_count = 0
+
+    # === 行为时间线（最近 8 个动作） ===
+    # 每个元素: {'classification': 'positive'/'negative'/'neutral', 'intensity': float, 'time': float}
+    recent_actions = []
+    max_recent_actions = 8
+    _last_monologue = ""           # 上次显示的独白
+    _monologue_alpha = 0.0         # 独白淡入淡出 alpha
 
     running = True
     while running:
@@ -281,6 +292,17 @@ def _main_loop():
             # === 主题化：动作结果反馈到情感系统 ===
             classification = action_dict.get('classification', 'neutral')
             intensity = action_dict.get('intensity', 0.5)
+
+            # === 记录到行为时间线 ===
+            # impact: 该行为在生命体上留下的"影响程度"（不被时间衰减）
+            recent_actions.append({
+                'classification': classification,
+                'intensity': intensity,        # 瞬时强度
+                'impact': intensity,           # 持续影响（与强度同源，但语义不同）
+                'time': time.time(),
+            })
+            if len(recent_actions) > max_recent_actions:
+                recent_actions.pop(0)
 
             if classification == 'negative':
                 emotional_core.update(0, {
@@ -410,11 +432,31 @@ def _main_loop():
             if violent:
                 intensity = max(intensity, 0.8)
             emotional_core.force_alert(intensity=intensity)
+
+            # === 在红圈内持续追加"重"到时间线 ===
+            # 每 1.2s 追加一条，让用户感受到"持续侵入"
+            if not hasattr(_main_loop, '_last_alert_record_time'):
+                _main_loop._last_alert_record_time = 0.0
+            now_t = time.time()
+            if now_t - _main_loop._last_alert_record_time >= 1.2:
+                _main_loop._last_alert_record_time = now_t
+                recent_actions.append({
+                    'classification': 'negative',
+                    'intensity': max(0.6, emotional_core.state_intensity),
+                    'impact': max(0.7, emotional_core.state_intensity),  # 持续警觉影响（≥0.7 表示持续惊扰）
+                    'time': now_t,
+                    'reason': 'alert',  # 标记：因在红圈内持续
+                })
+                if len(recent_actions) > 8:
+                    recent_actions.pop(0)
         elif current_level < 2:
             # 离开红圈：解锁警觉（恢复计时器继续）
             if getattr(personal_space, '_prev_warning_level', 0) == 2:
                 # 刚离开红圈，解锁
                 emotional_core.set_alert_lock(False)
+                # 重置红圈记录节流，以便下次进入时立即记录
+                if hasattr(_main_loop, '_last_alert_record_time'):
+                    _main_loop._last_alert_record_time = 0.0
             # 注意：current_level == 1（社交距离）不主动干预，让警觉自然恢复
 
         personal_space._prev_warning_level = current_level
@@ -440,10 +482,10 @@ def _main_loop():
         
         # 更新目标对象
         target_object.update()
-        
+
         # 更新目标位置（目标可能移动）
         particle_system.set_target(target_object.get_position())
-        
+
         # 渲染 Pygame 窗口
         # === 背景：noise 场（缓慢流动的深蓝→深紫渐变） ===
         bg_noise.update()
@@ -479,6 +521,148 @@ def _main_loop():
                 apply_post_processing(screen, blur_radius=1, blur_passes=1, sharpen=0.05),
                 (0, 0),
             )
+
+        # === P0-1: 生命体内心独白（绘制在生命体上方） ===
+        current_monologue = emotional_core.get_monologue()
+        if current_monologue != _last_monologue:
+            # 独白变化时，重置 alpha 触发淡入
+            _monologue_alpha = 0.0
+            _last_monologue = current_monologue
+        # 缓慢淡入
+        _monologue_alpha = min(1.0, _monologue_alpha + dt * 1.5)
+        if current_monologue and _monologue_alpha > 0.05:
+            mono_color = status_bar._get_state_color(
+                emotional_core.get_state_description()
+            )
+            mono_surf = font_medium.render(current_monologue, True, mono_color)
+            mono_surf.set_alpha(int(220 * _monologue_alpha))
+            mono_rect = mono_surf.get_rect(
+                center=(int(target_object.x), int(target_object.y) - 110)
+            )
+            # 描边（让文字在背景上清晰）
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                edge = font_medium.render(current_monologue, True, (20, 18, 28))
+                edge.set_alpha(int(180 * _monologue_alpha))
+                edge_rect = edge.get_rect(
+                    center=(int(target_object.x) + dx, int(target_object.y) - 110 + dy)
+                )
+                screen.blit(edge, edge_rect)
+            screen.blit(mono_surf, mono_rect)
+
+        # === P0-2: 行为时间线（状态栏上方） ===
+        # 用"动作块"显示：每块含文字标签（轻/重/中）+ 颜色 + 强度条
+        # 配合右侧图例，明白易懂
+        # 上移避免被状态栏进度条遮挡（块高 28 + 图例行 ≈ 50，状态栏顶 670）
+        tl_y = screen_h - status_bar.bar_height - 60
+        tl_x_start = 20
+
+        # === 主标题 ===
+        title_surf = font.render("你的行为:", True, (170, 170, 180))
+        screen.blit(title_surf, (tl_x_start, tl_y))
+        block_x = tl_x_start + 110
+
+        now = time.time()
+        block_w = 36
+        block_h = 28  # 加高 4 像素，让强度条放块内
+        gap = 4
+        for act in recent_actions[-8:]:
+            # === 分类 → 文字 + 颜色 ===
+            if act['classification'] == 'positive':
+                text = "轻"
+                bg_color = (90, 130, 80)         # 深绿底
+                edge_color = (180, 220, 150)     # 亮绿描边
+                text_color = (220, 240, 200)
+                bar_color = (180, 220, 150)
+            elif act['classification'] == 'negative':
+                text = "重"
+                bg_color = (130, 70, 60)         # 深红底
+                edge_color = (240, 140, 110)     # 亮红描边
+                text_color = (250, 200, 180)
+                bar_color = (240, 140, 110)
+            else:
+                text = "中"
+                bg_color = (70, 70, 80)
+                edge_color = (150, 150, 160)
+                text_color = (200, 200, 210)
+                bar_color = (150, 150, 160)
+
+            # === 透明度（按时间衰减） ===
+            age = now - act['time']
+            alpha = max(50, int(255 * (1.0 - age / 15.0)))
+
+            # === 块背景（半透明圆角矩形） ===
+            block_surf = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
+            pygame.draw.rect(
+                block_surf, (*bg_color, alpha),
+                (0, 0, block_w, block_h - 4), border_radius=4
+            )
+            pygame.draw.rect(
+                block_surf, (*edge_color, min(255, alpha + 30)),
+                (0, 0, block_w, block_h - 4), width=1, border_radius=4
+            )
+
+            # === 文字 ===
+            text_surf = font.render(text, True, text_color)
+            text_surf.set_alpha(alpha)
+            text_rect = text_surf.get_rect(center=(block_w // 2, (block_h - 4) // 2))
+            block_surf.blit(text_surf, text_rect)
+
+            # === 强度条（块内部底部，固定长度，深浅=持续影响 impact） ===
+            # 色条深浅 = impact 强度 × 时间衰减因子（与块整体同步衰减）
+            # 含义：行为造成的影响会随时间慢慢变淡
+            bar_w = block_w - 4  # 固定长度
+            bar_h = 2
+            # 影响强度（base_alpha） + 时间衰减（time_factor）
+            impact = act.get('impact', act.get('intensity', 0.5))
+            base_alpha = 30 + 225 * min(1.0, impact)
+            # 与块整体同步衰减（15s 完全衰减，最低保留 30% 让痕迹一直可见）
+            time_factor = max(0.3, 1.0 - (age / 15.0)) if 'age' in dir() else 1.0
+            # 单独计算时间因子（避免依赖 age 局部变量）
+            age_now = time.time() - act['time']
+            time_factor = max(0.3, 1.0 - age_now / 15.0)
+            bar_alpha = int(base_alpha * time_factor)
+            pygame.draw.rect(
+                block_surf, (*bar_color, bar_alpha),
+                (2, block_h - 5, bar_w, bar_h), border_radius=1
+            )
+
+            screen.blit(block_surf, (block_x, tl_y))
+            block_x += block_w + gap
+
+        # === 图例（时间线块的上方一行，右对齐，分两行） ===
+        if recent_actions:
+            legend_items = [
+                ("轻", (180, 220, 150)),
+                ("重", (240, 140, 110)),
+                ("中", (150, 150, 160)),
+            ]
+            # 估算每图例项宽度：24(块) + 6 + 30(字) = 60
+            # 标题"图例: " 约 56 像素
+            # 间距 10 像素
+            total_w = 56 + len(legend_items) * 60 + 10
+            # 右对齐（屏幕右边 20px 保护）
+            legend_x = max(20, screen_w - total_w - 20)
+            # 向上移动：时间线块上方 30px
+            legend_y = tl_y - 30
+
+            # 第一行：图例 + 三个色块（轻/重/中）
+            tip_surf = font.render("图例:", True, (130, 130, 140))
+            screen.blit(tip_surf, (legend_x, legend_y))
+            lx = legend_x + 56
+            for txt, col in legend_items:
+                # 小色块
+                chip = pygame.Surface((18, 14), pygame.SRCALPHA)
+                pygame.draw.rect(chip, (*col, 200), (0, 0, 18, 14), border_radius=2)
+                screen.blit(chip, (lx, legend_y + 4))
+                lx += 24
+                # 文字
+                ts = font.render(txt, True, col)
+                screen.blit(ts, (lx, legend_y))
+                lx += 30
+
+            # 第二行：色条深浅=影响（在第一行下方 28px = 20 + 8）
+            intensity_hint = font.render("色条深浅=影响", True, (110, 110, 120))
+            screen.blit(intensity_hint, (legend_x, legend_y + 28))
 
         # === 状态栏（底部）===
         warning_info = consequence_manager.check_intention({'speed': 0, 'acceleration': 0})

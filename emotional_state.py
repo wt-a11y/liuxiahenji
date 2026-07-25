@@ -269,6 +269,46 @@ class EmotionalCore:
             EmotionalState.NEGLECTED: "被忽视",
         }
         return descriptions.get(self.current_state, "未知")
+
+    def get_monologue(self) -> str:
+        """
+        获取生命体当前状态的"内心独白"
+        短句/省略号/呼吸感
+        根据强度变化，让独白有细微差异
+        """
+        # 平静：多版本，按强度/伤害累积选择
+        if self.current_state == EmotionalState.CALM:
+            if self.cumulative_harm > self.cumulative_care * 1.5:
+                return "……（还在恢复）"
+            return "……嗯"
+
+        # 警觉：被接近
+        if self.current_state == EmotionalState.ALERT:
+            if self.state_intensity > 0.7:
+                return "你……靠得太近了"
+            if self.alert_locked:
+                return "请……再慢一点"
+            return "嗯？……"
+
+        # 退缩：受伤害
+        if self.current_state == EmotionalState.WITHDRAWN:
+            if self.cumulative_harm > 5.0:
+                return "……我需要空间"
+            return "……别这样"
+
+        # 敞开：被温柔对待
+        if self.current_state == EmotionalState.OPEN:
+            if self.cumulative_care > 3.0:
+                return "我愿意靠近你"
+            return "嗯……这样就很好"
+
+        # 被忽视
+        if self.current_state == EmotionalState.NEGLECTED:
+            if self.state_timer > 15.0:
+                return "……你还在吗？"
+            return "……"
+
+        return ""
     
     def get_relationship_quality(self) -> float:
         """
