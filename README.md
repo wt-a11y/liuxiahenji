@@ -3,8 +3,19 @@
 > 一个基于计算机视觉的交互艺术作品。
 > 观众用身体动作，在屏幕中的"它"身上留下不可抹去的痕迹。
 
+<<<<<<< HEAD
 ![作品主界面：处于 L0 阶段的冷蓝色有机体](docs/screenshots/01-l0-initial-state.png)
 *（建议截图：刚启动时的初始冷蓝色有机体，体现"未被影响"的纯粹状态）*
+=======
+<img width="956" height="536" alt="屏幕截图 2026-07-10 033318" src="https://github.com/user-attachments/assets/8a6da7d5-7da8-4b67-ad7f-c3e862309fb6" />
+
+<img width="959" height="540" alt="屏幕截图 2026-07-10 033345" src="https://github.com/user-attachments/assets/109f2244-169a-4909-8dad-e1a3b50f2cdd" />
+
+<img width="953" height="530" alt="屏幕截图 2026-07-10 033405" src="https://github.com/user-attachments/assets/d5226c94-cf88-413e-bee4-9629f580b9f5" />
+
+<img width="959" height="538" alt="屏幕截图 2026-07-10 033413" src="https://github.com/user-attachments/assets/31a3ccb4-e527-47df-a502-a6a50fcaf043" />
+
+>>>>>>> f24847d4aaa0247219fa7189d512bda9e9e1499e
 
 ---
 
