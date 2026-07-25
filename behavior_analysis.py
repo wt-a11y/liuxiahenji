@@ -16,30 +16,93 @@ import time
 class ActionData:
     """
     动作数据类
-    
+
     描述一次手部动作的运动数据
     """
-    
+
+    # === 动作性质阈值 ===
+    # 注意：peak_speed 单位是"像素/秒"（不是像素/帧）
+    # 正常人手在摄像头前的速度：
+    #   静止: 0-50 px/s
+    #   缓慢画线: 100-300 px/s
+    #   正常手势: 300-600 px/s
+    #   快速挥手: 800-1500 px/s
+    #   甩动攻击: 1500+ px/s
+    POSITIVE_MAX_SPEED = 300.0        # 平均速度低于此值视为轻柔（大幅放宽）
+    POSITIVE_MAX_PEAK_SPEED = 600.0   # 峰值速度上限（日常手势都算轻柔）
+    POSITIVE_MAX_ACCEL_VAR = 30000.0  # 加速度方差上限
+    NEGATIVE_PEAK_SPEED = 1500.0      # 剧烈动作阈值（只有暴力级挥手才算伤害）
+    NEGATIVE_ACCEL_VAR = 80000.0      # 剧烈动作方差阈值
+
     def __init__(self):
         self.speed: float = 0.0          # 当前速度（像素/帧）
         self.distance: float = 0.0       # 总移动距离（像素）
         self.duration: float = 0.0       # 持续时间（秒）
         self.trajectory: List[Tuple[int, int]] = []  # 轨迹点列表
-        
+
+        # === 新增：强度与性质 ===
+        self.peak_speed: float = 0.0        # 峰值速度（动作中最大的瞬时速度）
+        self.accel_variance: float = 0.0    # 加速度方差（衡量动作的"突变"程度）
+        self.intensity: float = 0.0         # 综合强度 [0, 1]，1 = 极度剧烈
+        self.classification: str = "neutral"  # "positive" / "negative" / "neutral"
+        self.start_position: Optional[Tuple[int, int]] = None  # 动作起点（用于疤痕定位）
+
     def to_dict(self) -> Dict:
         """
         输出为字典格式
-        
+
         Returns:
-            {"speed": float, "distance": float, "duration": float, "trajectory": list}
+            完整动作数据字典
         """
         return {
             "speed": self.speed,
             "distance": self.distance,
             "duration": self.duration,
-            "trajectory": self.trajectory.copy()
+            "trajectory": self.trajectory.copy(),
+            "peak_speed": self.peak_speed,
+            "accel_variance": self.accel_variance,
+            "intensity": self.intensity,
+            "classification": self.classification,
+            "start_position": self.start_position,
         }
-    
+
+    def _compute_intensity(self) -> None:
+        """
+        根据峰值速度与加速度方差计算综合强度并分类
+
+        阈值设计（参考实际人手速度，已放宽，更容易触发退缩）：
+        - 静止: 0-50 px/s → positive
+        - 缓慢画线: 100-500 px/s → positive
+        - 正常手势: 500-800 px/s → positive（接近分界）
+        - 较快手势: 800+ px/s → negative（退缩）
+        - 快速挥手: 1500+ px/s → negative（强烈退缩）
+        - 暴力甩动: 2000+ px/s → negative（极度退缩）
+        """
+        # 归一化两个分量到 [0, 1]
+        # 用一个固定的归一化标准，让 800 px/s 达到 0.5
+        speed_norm = min(self.peak_speed / 1600.0, 1.0)
+        accel_norm = min(self.accel_variance / 200000.0, 1.0)
+
+        # 分类：综合判断（更容易触发退缩）
+        # - 任一分量 >= 0.5 视为 negative（对应 800 px/s 或强烈突变）
+        if speed_norm >= 0.5 or accel_norm >= 0.5:
+            self.classification = "negative"
+        else:
+            self.classification = "positive"
+
+        # 强度计算
+        if self.classification == "negative":
+            # 伤害程度 0.7-1.0
+            combined = max(speed_norm, accel_norm * 1.2)
+            # 重新归一化：combined (0.5-1.0) → 0.7-1.0
+            normalized = (combined - 0.5) / 0.5
+            self.intensity = round(0.7 + 0.3 * min(normalized, 1.0), 4)
+            self.intensity = min(1.0, max(0.7, self.intensity))
+        else:
+            # 治愈程度 0.1-0.5
+            self.intensity = round(0.1 + 0.4 * speed_norm, 4)
+            self.intensity = min(0.5, max(0.1, self.intensity))
+
     def __str__(self) -> str:
         """字符串表示"""
         return (
@@ -47,7 +110,10 @@ class ActionData:
             f"  speed={self.speed:.2f} px/frame,\n"
             f"  distance={self.distance:.2f} px,\n"
             f"  duration={self.duration:.2f} s,\n"
-            f"  trajectory_points={len(self.trajectory)}\n"
+            f"  trajectory_points={len(self.trajectory)},\n"
+            f"  peak_speed={self.peak_speed:.2f},\n"
+            f"  accel_variance={self.accel_variance:.2f},\n"
+            f"  intensity={self.intensity:.2f} ({self.classification})\n"
             f")"
         )
 
@@ -180,19 +246,20 @@ class BehaviorAnalyzer:
     def _finalize_action(self) -> ActionData:
         """
         完成动作，计算最终数据
-        
+
         Returns:
             ActionData 对象
         """
         action = ActionData()
-        
+
         if not self.trajectory_with_time:
             return action
-        
+
         # 计算轨迹数据
         trajectory = [(p[0], p[1]) for p in self.trajectory_with_time]
         action.trajectory = trajectory
-        
+        action.start_position = trajectory[0] if trajectory else None
+
         # 计算总距离
         total_distance = 0.0
         for i in range(1, len(trajectory)):
@@ -200,29 +267,72 @@ class BehaviorAnalyzer:
             dy = trajectory[i][1] - trajectory[i-1][1]
             total_distance += math.sqrt(dx ** 2 + dy ** 2)
         action.distance = total_distance
-        
+
         # 计算持续时间
         start_time = self.trajectory_with_time[0][2]
         end_time = self.trajectory_with_time[-1][2]
         action.duration = end_time - start_time
-        
+
         # 计算平均速度
         if action.duration > 0:
             action.speed = total_distance / (action.duration * 60)  # 转换为像素/帧（假设60fps）
         else:
             action.speed = 0.0
-        
+
+        # === 新增：计算峰值速度与加速度方差，并得出强度分类 ===
+        self._compute_peak_and_accel(action)
+        action._compute_intensity()
+
         # 保存到历史
         self.completed_actions.append(action)
-        
+
         # 重置状态
         self.trajectory_with_time.clear()
         self.inactive_start_time = None
         self.is_action_ended = False
-        
+
         print(f"动作结束: {action}")
-        
+
         return action
+
+    def _compute_peak_and_accel(self, action: ActionData) -> None:
+        """
+        计算动作过程中的峰值速度与加速度方差
+
+        Args:
+            action: 待填充的动作数据对象
+        """
+        if len(self.trajectory_with_time) < 3:
+            action.peak_speed = action.speed
+            action.accel_variance = 0.0
+            return
+
+        # 计算每段速度（基于时间，避免帧率不稳）
+        segment_speeds: List[float] = []
+        for i in range(1, len(self.trajectory_with_time)):
+            x0, y0, t0 = self.trajectory_with_time[i - 1]
+            x1, y1, t1 = self.trajectory_with_time[i]
+            dt = max(t1 - t0, 1e-6)
+            dist = math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2)
+            segment_speeds.append(dist / dt)  # 像素/秒
+
+        if not segment_speeds:
+            return
+
+        # 峰值速度（像素/秒）
+        action.peak_speed = max(segment_speeds)
+
+        # 加速度方差（速度变化的剧烈程度）
+        if len(segment_speeds) >= 2:
+            accels = [
+                segment_speeds[i] - segment_speeds[i - 1]
+                for i in range(1, len(segment_speeds))
+            ]
+            mean_accel = sum(accels) / len(accels)
+            variance = sum((a - mean_accel) ** 2 for a in accels) / len(accels)
+            action.accel_variance = variance
+        else:
+            action.accel_variance = 0.0
     
     def analyze(self, trajectory: List[Tuple[int, int]]) -> Optional[ActionData]:
         """

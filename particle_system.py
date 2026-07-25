@@ -12,6 +12,7 @@ import random
 import math
 from typing import List, Tuple, Optional, Dict
 import time
+from visual_effects import draw_glow_polygon
 
 
 # 用于为每个 MemoryFragment 分配唯一 id
@@ -35,7 +36,8 @@ class MemoryFragment:
     def __init__(self, x: float, y: float,
                  intensity: float = 0.5,
                  behavior_speed: float = 0.0,
-                 behavior_distance: float = 0.0):
+                 behavior_distance: float = 0.0,
+                 classification: str = 'neutral'):
         """
         初始化记忆碎片 - 半透明晶体状碎片
 
@@ -44,6 +46,10 @@ class MemoryFragment:
             intensity: 碎片强度 (0.0 - 1.0)
             behavior_speed: 行为速度
             behavior_distance: 行为距离
+            classification: 行为分类
+                - "positive": 轻柔 / 治愈（暖色柔和碎片）
+                - "negative": 剧烈 / 伤害（冷色尖锐碎片）
+                - "neutral":  中性（默认琥珀色）
         """
         self.x = x
         self.y = y
@@ -56,9 +62,15 @@ class MemoryFragment:
         # 碎片属性
         self.intensity = intensity
         self.size = random.uniform(9, 16) * (0.6 + intensity * 0.5)
+        # 行为分类
+        self.classification = classification
 
         # === 晶体形态：不规则多边形 + 方向感 ===
-        self._init_crystal_shape()
+        # 负向行为的碎片更尖锐、抖动更剧烈
+        if classification == "negative":
+            self._init_crystal_shape(jitter_scale=1.6, tip_extension=1.7)
+        else:
+            self._init_crystal_shape(jitter_scale=1.0, tip_extension=1.4)
 
         # === 旋转 ===
         self.rotation_angle = random.uniform(0, 2 * math.pi)
@@ -72,18 +84,34 @@ class MemoryFragment:
         # 脉动每帧基于 _target_transparency 重新计算，避免乘法累积导致衰减
         self._target_transparency = self.base_transparency
 
-        # === 颜色调色板：柔和琥珀系（避免高饱和黄） ===
-        # 主体：明亮暖琥珀（半透明叠加会变暗，所以用偏亮的基底色）
-        self.body_color = (232, 188, 132)
-        # 内部核心：更亮、更暖
-        self.inner_color = (250, 218, 170)
-        # 辉光：温暖的暖橙
-        self.glow_color = (235, 185, 130)
-        # 高光：近白暖色
-        self.highlight_color = (255, 244, 222)
+        # === 颜色调色板：基于行为分类差异化 ===
+        # positive（治愈）→ 暖琥珀（金黄色调）—— 传达"温暖、滋养"
+        # negative（伤害）→ 冷紫黑（蓝紫调）   —— 传达"尖锐、压抑"
+        # neutral / 默认 → 暖琥珀
+        if classification == "negative":
+            # 负向碎片：冷紫黑系，传达"伤害"的视觉
+            self.body_color = (95, 80, 130)        # 暗紫主体
+            self.inner_color = (140, 120, 175)     # 较亮紫芯
+            self.glow_color = (80, 60, 110)        # 冷暗辉光
+            self.highlight_color = (180, 165, 210) # 紫白高光
+        else:
+            # 正向 / 中性碎片：暖琥珀系（保持原有"记忆"的视觉）
+            self.body_color = (232, 188, 132)
+            self.inner_color = (250, 218, 170)
+            self.glow_color = (235, 185, 130)
+            self.highlight_color = (255, 244, 222)
         # 兼容旧接口
         self.base_color = self.body_color
         self.current_color = self.body_color
+
+        # 保存原始颜色（用于状态着色恢复）
+        self._orig_body = self.body_color
+        self._orig_inner = self.inner_color
+        self._orig_glow = self.glow_color
+        self._orig_highlight = self.highlight_color
+
+        # 当前情感状态色调（由外部动态更新）
+        self.emotional_tint = None  # None / "happy" / "tense" / "sad" / "healing" / "cold"
 
         # === 残影（晶体经过时留下的光点） ===
         self.trail_positions: List[Tuple[float, float, float]] = []
@@ -164,8 +192,13 @@ class MemoryFragment:
         self.birth_time = time.time()
         self.max_lifetime = 60
 
-    def _init_crystal_shape(self):
-        """初始化不规则晶体形态 - 有方向感的尖端 + 不对称分布"""
+    def _init_crystal_shape(self, jitter_scale: float = 1.0, tip_extension: float = 1.4):
+        """初始化不规则晶体形态 - 有方向感的尖端 + 不对称分布
+
+        Args:
+            jitter_scale: 顶点角度抖动倍数（负向行为碎片更大，更不规则）
+            tip_extension: 尖端延伸倍数（负向行为碎片更尖锐）
+        """
         self.num_vertices = random.randint(6, 8)
         self.vertex_angles: List[float] = []
         self.vertex_distances: List[float] = []
@@ -182,12 +215,12 @@ class MemoryFragment:
             base_angle = self.tip_angle + math.pi
             angle = base_angle + t * 2 * math.pi
             # 加上随机扰动（制造不规则感）
-            angle += random.uniform(-0.18, 0.18)
+            angle += random.uniform(-0.18, 0.18) * jitter_scale
             self.vertex_angles.append(angle)
 
             # 距离：第一个顶点（尖端）更远，其他更短且随机
             if i == self.tip_vertex_idx:
-                distance = random.uniform(1.25, 1.5)
+                distance = random.uniform(1.25, tip_extension)
             else:
                 distance = random.uniform(0.6, 1.0)
             self.vertex_distances.append(distance)
@@ -248,7 +281,45 @@ class MemoryFragment:
             img.tobytes(), img.size, img.mode
         )
         return texture
-        
+
+    def set_emotional_tint(self, tint: Optional[str]):
+        """
+        根据生命体当前情感状态调整碎片颜色
+
+        Args:
+            tint: None / "warm" / "tense" / "healing" / "cold" / "sad"
+        """
+        self.emotional_tint = tint
+
+        # 状态色调映射表
+        # 偏移量会叠加到原始颜色上
+        TINT_OFFSETS = {
+            "warm":    ((+10, +5, -10), (+5, +5, -5), (+10, 0, -5), (+5, +5, 0)),  # 暖橙
+            "tense":   ((-30, -20, -10), (-20, -10, 0), (-30, -20, -10), (-15, -10, 0)),  # 偏冷
+            "healing": ((+15, +10, -5), (+20, +15, 0), (+15, +10, -5), (+10, +10, 0)),  # 明亮暖色
+            "cold":    ((-20, -10, +20), (-10, 0, +15), (-25, -15, +20), (-10, 0, +10)),  # 冷蓝
+            "sad":     ((-10, -5, +10), (-5, 0, +10), (-15, -10, +10), (-5, 0, +5)),  # 偏蓝灰
+            None:      ((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)),  # 恢复原始
+        }
+
+        if tint not in TINT_OFFSETS:
+            return
+
+        offsets = TINT_OFFSETS[tint]
+        ob, oi, og, oh = offsets
+
+        def apply_offset(base, off):
+            return (
+                max(0, min(255, base[0] + off[0])),
+                max(0, min(255, base[1] + off[1])),
+                max(0, min(255, base[2] + off[2])),
+            )
+
+        self.body_color = apply_offset(self._orig_body, ob)
+        self.inner_color = apply_offset(self._orig_inner, oi)
+        self.glow_color = apply_offset(self._orig_glow, og)
+        self.highlight_color = apply_offset(self._orig_highlight, oh)
+
     def update(self, target_position: Optional[Tuple[float, float]] = None):
         """
         更新碎片状态
@@ -563,44 +634,50 @@ class MemoryCloud:
         self.fragments: List[MemoryFragment] = []
         self.target_position: Optional[Tuple[float, float]] = None
         
-    def add_fragments_from_trajectory(self, trajectory: List[Tuple[int, int]], 
+    def add_fragments_from_trajectory(self, trajectory: List[Tuple[int, int]],
                                      behavior_speed: float = 0.0,
-                                     behavior_distance: float = 0.0):
+                                     behavior_distance: float = 0.0,
+                                     classification: str = 'neutral'):
         """
         从轨迹生成记忆碎片
-        
+
         Args:
             trajectory: 轨迹点列表
             behavior_speed: 行为速度
             behavior_distance: 行为距离
+            classification: 行为分类（"positive" / "negative" / "neutral"）
+                - 正向：暖色柔和碎片（默认琥珀色）
+                - 负向：冷色尖锐碎片（暗紫色）
+                - 中性：默认琥珀色
         """
         if len(trajectory) < 3:
             return
-        
+
         # 根据轨迹长度决定碎片数量
         num_fragments = min(8, max(3, len(trajectory) // 15))
-        
+
         # 从轨迹中均匀采样点生成碎片
         step = len(trajectory) // num_fragments
-        
+
         for i in range(num_fragments):
             idx = min(i * step, len(trajectory) - 1)
             x, y = trajectory[idx]
-            
+
             # 强度根据轨迹特征计算
-            intensity = min(1.0, (behavior_speed / 20.0) * 0.3 + 
+            intensity = min(1.0, (behavior_speed / 20.0) * 0.3 +
                           (behavior_distance / 500.0) * 0.7)
-            
+
             fragment = MemoryFragment(
-                x=float(x), 
+                x=float(x),
                 y=float(y),
                 intensity=intensity,
                 behavior_speed=behavior_speed,
-                behavior_distance=behavior_distance
+                behavior_distance=behavior_distance,
+                classification=classification,
             )
             self.fragments.append(fragment)
-            
-        print(f"生成 {num_fragments} 个记忆碎片")
+
+        print(f"生成 {num_fragments} 个 {classification} 记忆碎片")
         
     def set_target(self, target_position: Tuple[float, float]):
         """
@@ -832,17 +909,10 @@ class MemoryCloud:
 
         alpha_total = max(0, min(255, int(255 * fragment.transparency)))
 
-        # === 1) 外层辉光（稍微放大的多边形剪影） ===
+        # === 1) 外层辉光（多层多边形叠加，软边缘辉光） ===
         glow_alpha = int(alpha_total * 0.18)
         if glow_alpha > 4:
-            glow_scale = 1.18
-            glow_points = [
-                (cx_local + (p[0] - cx_local) * glow_scale,
-                 cy_local + (p[1] - cy_local) * glow_scale)
-                for p in local_points
-            ]
-            glow_color = (*fragment.glow_color, glow_alpha)
-            pygame.draw.polygon(surf, glow_color, glow_points)
+            draw_glow_polygon(surf, local_points, fragment.glow_color, layers=3)
 
         # === 1.5) 边缘模糊层（absorbing/integrating阶段）- 模拟羽化边缘 ===
         if is_absorbing and alpha_total > 8:
@@ -938,7 +1008,13 @@ class MemoryCloud:
     def get_fragments_by_state(self, state: str) -> int:
         """获取特定状态的碎片数量"""
         return sum(1 for f in self.fragments if f.get_state() == state)
-    
+
+    def set_emotional_tint(self, tint: Optional[str]):
+        """批量设置所有碎片的情感色调"""
+        for f in self.fragments:
+            if f.emotional_tint != tint:
+                f.set_emotional_tint(tint)
+
     def clear(self):
         """清除所有碎片"""
         self.fragments.clear()
@@ -968,17 +1044,19 @@ class ParticleSystem:
         
     def create_trace_from_trajectory(self, trajectory: List[Tuple[int, int]],
                                     behavior_speed: float = 0.0,
-                                    behavior_distance: float = 0.0):
+                                    behavior_distance: float = 0.0,
+                                    classification: str = 'neutral'):
         """
         从轨迹创建记忆碎片
-        
+
         Args:
             trajectory: 轨迹点列表
             behavior_speed: 行为速度
             behavior_distance: 行为距离
+            classification: 行为分类（"positive" / "negative" / "neutral"）
         """
         self.memory_cloud.add_fragments_from_trajectory(
-            trajectory, behavior_speed, behavior_distance
+            trajectory, behavior_speed, behavior_distance, classification
         )
         
     def update(self) -> List[Dict]:
@@ -1011,7 +1089,16 @@ class ParticleSystem:
     def get_particle_count(self) -> int:
         """获取当前粒子数量"""
         return self.memory_cloud.get_fragment_count()
-    
+
+    def set_emotional_tint(self, tint: Optional[str]):
+        """
+        设置所有碎片的情感色调（用于反映生命体当前状态）
+
+        Args:
+            tint: None / "warm" / "tense" / "healing" / "cold" / "sad"
+        """
+        self.memory_cloud.set_emotional_tint(tint)
+
     def clear(self):
         """清除所有粒子"""
         self.memory_cloud.clear()

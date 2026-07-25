@@ -26,6 +26,7 @@ import pygame
 import math
 import random
 from typing import List, Tuple, Dict, Optional
+from visual_effects import PerlinNoise, draw_radial_gradient, draw_glow
 
 
 class FlowTexture:
@@ -340,7 +341,6 @@ class MemoryLayer:
     - 不会被无限堆叠（最大层数限制）
     - 通过改变生命体自身的绘制状态来表达
     """
-
     def __init__(self, center_x: float, center_y: float,
                  impact_angle: float, intensity: float, layer_index: int):
         """
@@ -457,6 +457,82 @@ class MemoryLayer:
     def is_fully_grown(self) -> bool:
         """判断记忆层是否已完全生长"""
         return self.growth > 0.95
+
+
+class Scar:
+    """
+    暗疤痕 - 负向交互在生命体上留下的永久痕迹
+
+    核心设计：
+    - 只由 negative（剧烈）行为触发
+    - 持久不消退（除非被正向行为缓慢治愈）
+    - 视觉上比周围基色明显更暗、更冷（灰蓝/深紫），形成"伤痕"感
+    - 数量越多，生命体整体越显"沉重"
+    - 这是作品观点的核心载体："负面行为留下不易磨灭的痕迹"
+
+    与 MemoryLayer 的区别：
+    - MemoryLayer：暖色，向外延伸，代表"成长/经历"
+    - Scar：暗色，集中在接触点，代表"伤害"
+    """
+
+    def __init__(self, x: float, y: float, intensity: float = 0.6):
+        """
+        Args:
+            x, y: 疤痕中心（相对生命体中心的偏移，由调用方计算）
+            intensity: 初始强度 (0.0 - 1.0)
+        """
+        self.x = x
+        self.y = y
+        # 当前可见强度（受正向交互治愈时降低）
+        self.intensity = max(0.0, min(1.0, intensity))
+        # 最大强度（不可被治愈超过此值）
+        self.max_intensity = self.intensity
+        # 渐入生长（刚出现时不立刻显形）
+        self.growth = 0.0
+        # 半径（脉动让边缘更柔和）
+        self.base_radius = 14 + intensity * 8
+        self.flow_phase = random.uniform(0, 2 * math.pi)
+        # 用于轻微脉动
+        self.pulse_seed = random.uniform(0, 2 * math.pi)
+
+    def heal(self, amount: float) -> None:
+        """
+        被正向交互治愈时调用
+
+        Args:
+            amount: 治愈量（0.0 - 1.0）
+        """
+        # 治愈上限：max_intensity 的 60% 之内可被治愈，更深的伤疤更难消除
+        healable = self.max_intensity * 0.6
+        self.intensity = max(self.max_intensity - healable, self.intensity - amount * 0.15)
+
+    def update(self, center_x: float, center_y: float, dt: float = 1.0 / 60.0) -> None:
+        """
+        更新疤痕（中心跟随生命体）
+
+        Args:
+            center_x, center_y: 当前生命体中心
+            dt: 时间步长
+        """
+        # 生长（刚生成时淡入）
+        self.growth = min(1.0, self.growth + 0.012)
+        self.flow_phase += 0.02
+
+    def get_world_position(self, center_x: float, center_y: float) -> Tuple[float, float]:
+        """
+        获取疤痕的当前世界坐标
+
+        Args:
+            center_x, center_y: 当前生命体中心
+        """
+        return (center_x + self.x, center_y + self.y)
+
+    def get_alpha(self) -> int:
+        """获取当前绘制透明度"""
+        return int(200 * self.intensity * self.growth)
+
+    def is_visible(self) -> bool:
+        return self.growth > 0.1 and self.intensity > 0.05
 
 
 
@@ -1089,7 +1165,18 @@ class TargetObject:
         # 永久纹理层（旧系统，保留字段以防外部引用，但不绘制）
         # 新设计不再使用此列表 - 仅保留用于兼容性
         self.permanent_texture_layers: List[PermanentTextureLayer] = []
-        
+
+        # === 暗疤痕系统（作品观点的核心视觉载体） ===
+        # 仅由 negative（剧烈）行为触发
+        # 持久存在，被正向行为缓慢治愈
+        # 视觉上明显比周围暗、冷，形成"伤痕"感
+        self.scars: List[Scar] = []
+        self.max_scars = 24  # 最多保留 24 个疤痕（防止性能问题）
+
+        # 正向/负向影响计数（用于作品反思文字与统计）
+        self.positive_count: int = 0   # 累计正向交互次数
+        self.negative_count: int = 0   # 累计负向交互次数
+
         # 状态
         self.age = 0
         self.cumulative_influence = 0.0
@@ -1181,6 +1268,10 @@ class TargetObject:
         self.absorbing_fragments: Dict[int, Dict] = {}
         self.last_contact_trigger_time = 0.0
 
+        # === 视觉特效：Perlin Noise（用于形变 + 呼吸感） ===
+        self._noise = PerlinNoise(seed=random.randint(0, 9999))
+        self._noise_time = 0.0
+
     def on_fragment_contact(self, fragment_id: int, angle: float, intensity: float):
         """
         Fragment 进入 CONTACT 状态 - 触发膜接触扰动
@@ -1257,7 +1348,9 @@ class TargetObject:
 
     def receive_impact(self, value: float,
                       source_position: Dict = None,
-                      impact_type: str = 'memory'):
+                      impact_type: str = 'memory',
+                      classification: str = 'neutral',
+                      intensity_raw: float = None):
         """
         接受行为影响
 
@@ -1267,21 +1360,37 @@ class TargetObject:
             value: 影响强度 (0.0 - 1.0)
             source_position: 来源位置
             impact_type: 影响类型
+            classification: 动作性质分类
+                - "positive": 轻柔 / 治愈
+                - "negative": 剧烈 / 伤害（生成暗疤痕）
+                - "neutral":  中性（默认，旧行为兼容）
+            intensity_raw: 原始强度（用于在 negative 时调整疤痕强度；默认用 value）
         """
+        # 统计正向/负向次数
+        if classification == "positive":
+            self.positive_count += 1
+        elif classification == "negative":
+            self.negative_count += 1
+
         # 记录影响历史
         impact_record = {
             'time': self.age,
             'value': value,
-            'source': source_position.copy() if source_position else None
+            'source': source_position.copy() if source_position else None,
+            'classification': classification,
         }
         self.influence_history.append(impact_record)
-        
+
         # 更新累积影响
         self.cumulative_influence = min(1.0, self.cumulative_influence + value * 0.1)
-        
+
         # 累积影响水平（用于视觉反馈，永久）
-        self.impact_level = min(1.0, self.impact_level + value * 0.05)
-        
+        # 负向行为额外增加 0.5 倍（强调伤害的"沉重感"）
+        impact_bump = value * 0.05
+        if classification == "negative":
+            impact_bump *= 1.5
+        self.impact_level = min(1.0, self.impact_level + impact_bump)
+
         # 实际进入的碎片数量+1（用于颜色分阶段判定）
         self.absorbed_count += 1
         # 累计吸收的碎片数量（核心颜色变化依据，不衰减）
@@ -1299,7 +1408,7 @@ class TargetObject:
         target_color = self._calculate_target_color_from_progress(new_progress)
 
         # 调试输出：每次碎片进入时打印
-        print(f"Fragment absorbed: count = {self.fragment_count}")
+        print(f"Fragment absorbed: count = {self.fragment_count}, classification = {classification}")
         print(f"  color_progress = {new_progress:.3f}")
         print(f"  target_color   = {tuple(int(c) for c in target_color)}")
         print(f"  current_color  = {tuple(int(c) for c in self.current_color)}")
@@ -1308,10 +1417,10 @@ class TargetObject:
             print(f"  >>> memory_level UP: {self._last_logged_level} -> {self.memory_level}  "
                   f"(fragment_count = {self.fragment_count})")
             self._last_logged_level = self.memory_level
-        
+
         # 标记为被影响状态
         self.is_currently_influenced = True
-        
+
         # 如果有来源位置，添加记忆层和内部变化
         if source_position:
             fragment_x = source_position.get('x', self.x)
@@ -1329,14 +1438,39 @@ class TargetObject:
             self.membrane.receive_impact(value, angle)
 
             # === 长期影响：新增 memory_layer（不是残影多边形）===
-            # 第1次吸收：新增一条内部纹理
-            # 第2次吸收：与已有纹理交叉，改写方向
-            # 第3次+：形成结构变化
-            # 第4次+：与最早记忆层共振
             self._absorb_into_memory(angle, value)
 
+            # === 暗疤痕：仅负向行为触发 ===
+            if classification == "negative":
+                # 用 intensity_raw 优先（更准确），否则用 value
+                scar_strength = intensity_raw if intensity_raw is not None else value
+                # 计算偏移（相对于生命体中心）
+                offset_dist = math.hypot(dx, dy)
+                if offset_dist > 1e-3:
+                    nx = dx / offset_dist
+                    ny = dy / offset_dist
+                else:
+                    nx, ny = math.cos(angle), math.sin(angle)
+                # 在接触方向上投影一个稳定距离
+                scar_dist = min(45.0, offset_dist) if offset_dist > 0 else 30.0
+                scar = Scar(
+                    x=nx * scar_dist,
+                    y=ny * scar_dist,
+                    intensity=max(0.4, min(1.0, scar_strength * 0.9 + 0.3)),
+                )
+                self.scars.append(scar)
+                # 限制最大数量（FIFO）
+                if len(self.scars) > self.max_scars:
+                    self.scars.pop(0)
+                print(f"  ✖ 暗疤痕生成 ({len(self.scars)}/{self.max_scars}) 强度={scar.intensity:.2f}")
+
+            # === 正向行为：缓慢治愈已有的暗疤痕 ===
+            if classification == "positive" and self.scars:
+                # 每次正向交互治愈一个旧疤痕一点
+                target_scar = random.choice(self.scars)
+                target_scar.heal(0.4)
+
             # 改变原有基础纹理的方向（让内部纹理向影响方向微微偏转）
-            # 偏转量较小，不会破坏生命体本身的设计
             for texture in self.flow_textures:
                 # 计算从纹理到影响方向的角度差
                 angle_diff = angle - texture.base_angle
@@ -1365,7 +1499,8 @@ class TargetObject:
 
         print(f"生命体受到记忆渗透: 强度={value:.2f}, 记忆层数={len(self.memory_layers)}, "
               f"结构变化={self.structure_changes}, 内部痕迹={self.internal_traces}, "
-              f"累积={self.cumulative_influence:.2f}")
+              f"暗疤痕={len(self.scars)}, 累积={self.cumulative_influence:.2f}, "
+              f"分类={classification}")
 
     def _absorb_into_memory(self, angle: float, intensity: float):
         """
@@ -1656,6 +1791,10 @@ class TargetObject:
         for layer in self.memory_layers:
             layer.update(self.x, self.y)
 
+        # 更新暗疤痕（淡入 + 脉动）
+        for scar in self.scars:
+            scar.update(self.x, self.y)
+
         # 检查是否所有纹理都恢复平静
         all_calm = all(texture.influence_intensity < 0.05 for texture in self.flow_textures)
         if all_calm and self.membrane.deformation_factor < 0.05:
@@ -1667,7 +1806,8 @@ class TargetObject:
 
         1. 基础内部流动纹理（生命体本身的纹理）
         2. 记忆层（吸收后的内部改变 - 内部纹理的一部分）
-        3. 多层半透明有机膜（最外层）
+        3. 暗疤痕（负向行为留下的永久痕迹 - 在外膜之下但高于脉络）
+        4. 多层半透明有机膜（最外层 + noise 形变）
 
         长期影响通过 memory_layers 表达，融入基础纹理系统
         不是独立的残影/多边形层
@@ -1675,13 +1815,19 @@ class TargetObject:
         Args:
             screen: Pygame屏幕表面
         """
+        # 推进 noise 时间（用于形变 + 呼吸感）
+        self._noise_time += 0.008
+
         # 1. 绘制基础内部流动纹理（最底层）
         self._draw_flow_textures(screen)
 
         # 2. 绘制记忆层（吸收后的永久改变 - 融入内部纹理）
         self._draw_memory_layers(screen)
 
-        # 3. 绘制多层半透明有机膜（最外层）
+        # 3. 绘制暗疤痕（负向痕迹，叠加在内部纹理之上）
+        self._draw_scars(screen)
+
+        # 4. 绘制多层半透明有机膜（最外层）
         self._draw_membrane_layers(screen)
 
     def _draw_memory_layers(self, screen: pygame.Surface):
@@ -1761,6 +1907,74 @@ class TargetObject:
         pygame.draw.lines(surf, color, False, adjusted_points, line_width)
 
         screen.blit(surf, (min_x - 5, min_y - 5))
+
+    def _draw_scars(self, screen: pygame.Surface):
+        """
+        绘制暗疤痕（负向行为留下的永久痕迹）
+
+        视觉（使用径向渐变替代简单圆）：
+        - 深紫黑内核 → 暗紫中圈 → 透明外圈（径向渐变）
+        - 边缘有"伤口开裂"的不规则感
+        - 不透明度随 intensity 变化（受伤越重越明显）
+
+        Args:
+            screen: Pygame屏幕表面
+        """
+        if not self.scars:
+            return
+
+        for scar in self.scars:
+            if not scar.is_visible():
+                continue
+
+            wx, wy = scar.get_world_position(self.x, self.y)
+            # 轻微脉动（让疤痕"活"在生命体上）
+            pulse = 1.0 + 0.06 * math.sin(scar.flow_phase + scar.pulse_seed)
+            radius = scar.base_radius * pulse
+
+            inner_alpha = scar.get_alpha()
+            if inner_alpha <= 0:
+                continue
+
+            # === 径向渐变：内核深紫黑 → 外圈暗紫 → 透明 ===
+            inner_color = (35, 25, 50, inner_alpha)
+            mid_color = (55, 40, 80, int(inner_alpha * 0.55))
+            outer_color = (70, 50, 100, 0)
+
+            # 三层径向渐变（内核 → 中圈 → 外圈）
+            inner_r = radius * 0.4
+            mid_r = radius * 0.75
+            outer_r = radius * 1.15
+
+            # 内核 → 中圈
+            draw_radial_gradient(
+                screen, (wx, wy),
+                inner_r, mid_r,
+                inner_color, mid_color,
+                irregularity=0.6,
+            )
+            # 中圈 → 外圈
+            draw_radial_gradient(
+                screen, (wx, wy),
+                mid_r, outer_r,
+                mid_color, outer_color,
+                irregularity=0.8,
+            )
+
+            # 裂纹线（增加伤口感）
+            if scar.intensity > 0.4:
+                for crack_i in range(2):
+                    crack_angle = scar.pulse_seed + crack_i * math.pi
+                    crack_len = radius * (0.5 + 0.4 * scar.intensity)
+                    sx = wx + math.cos(crack_angle) * (inner_r * 0.5)
+                    sy = wy + math.sin(crack_angle) * (inner_r * 0.5)
+                    ex = wx + math.cos(crack_angle) * crack_len
+                    ey = wy + math.sin(crack_angle) * crack_len
+                    crack_color = (20, 15, 30, int(inner_alpha * 0.5))
+                    pygame.draw.line(screen, crack_color,
+                                     (int(sx), int(sy)), (int(ex), int(ey)), 1)
+
+
     
     def _draw_membrane_layers(self, screen: pygame.Surface):
         """
@@ -1768,6 +1982,9 @@ class TargetObject:
         
         多层blob叠加产生柔和、有机的边缘
         避免硬轮廓，看起来像水母/细胞
+
+        + noise 形变：顶点位置受 Perlin noise 驱动轻微偏移，
+        让有机体产生"蠕动/呼吸"的活体感
         """
         # 从外到内绘制（外层先画）
         for layer_idx in range(self.membrane.num_layers - 1, -1, -1):
@@ -1775,14 +1992,32 @@ class TargetObject:
             
             if len(points) < 3:
                 continue
-            
+
+            # === noise 形变：顶点位置微调（蠕动感） ===
+            noise_scale = 0.015  # noise 采样频率
+            noise_amplitude = 3.5 + layer_idx * 1.5  # 外层噪声更大
+            deformed_points = []
+            for (px, py) in points:
+                nx = self._noise.noise(
+                    px * noise_scale + self._noise_time * 0.3,
+                    py * noise_scale + self._noise_time * 0.25,
+                )
+                ny = self._noise.noise(
+                    px * noise_scale + self._noise_time * 0.25 + 100,
+                    py * noise_scale + self._noise_time * 0.3 + 100,
+                )
+                deformed_points.append((
+                    px + nx * noise_amplitude,
+                    py + ny * noise_amplitude,
+                ))
+
             color = self.membrane.get_color(layer_idx)
             
             # 计算边界框
-            min_x = min(p[0] for p in points)
-            max_x = max(p[0] for p in points)
-            min_y = min(p[1] for p in points)
-            max_y = max(p[1] for p in points)
+            min_x = min(p[0] for p in deformed_points)
+            max_x = max(p[0] for p in deformed_points)
+            min_y = min(p[1] for p in deformed_points)
+            max_y = max(p[1] for p in deformed_points)
             
             width = int(max_x - min_x) + 20
             height = int(max_y - min_y) + 20
@@ -1794,7 +2029,7 @@ class TargetObject:
             surf = pygame.Surface((width, height), pygame.SRCALPHA)
             
             # 调整点坐标
-            adjusted_points = [(p[0] - min_x + 10, p[1] - min_y + 10) for p in points]
+            adjusted_points = [(p[0] - min_x + 10, p[1] - min_y + 10) for p in deformed_points]
             
             # 绘制填充的多边形
             pygame.draw.polygon(surf, color, adjusted_points)
@@ -1891,6 +2126,16 @@ class TargetObject:
                         pygame.draw.lines(texture_surf, vein_color_b, False,
                                           adjusted_points[start_b:end_b], 2)
 
+            # === 辉光：在绘制前叠加一层柔光底色 ===
+            # 仅在脉络强度较高时添加（L2+），增强"记忆融入"的视觉
+            glow_alpha = int(30 * vein_strength * intensity)
+            if glow_alpha > 5 and len(adjusted_points) >= 2:
+                glow_color = (r, g, b, glow_alpha)
+                glow_surf = pygame.Surface((width, height), pygame.SRCALPHA)
+                # 用更粗的线条绘制辉光底层
+                pygame.draw.lines(glow_surf, glow_color, False, adjusted_points, 4)
+                screen.blit(glow_surf, (min_x - 5, min_y - 5))
+
             # 绘制到屏幕
             screen.blit(texture_surf, (min_x - 5, min_y - 5))
     
@@ -1925,6 +2170,11 @@ class TargetObject:
 
         # 清空永久纹理层（旧系统，保留兼容）
         self.permanent_texture_layers.clear()
+
+        # 清空暗疤痕 + 重置正负向计数
+        self.scars.clear()
+        self.positive_count = 0
+        self.negative_count = 0
 
         self.cumulative_influence = 0.0
         self.impact_level = 0.0
