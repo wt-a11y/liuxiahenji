@@ -29,7 +29,7 @@ from target_object import TargetObject
 from interaction import InteractionManager
 from visual_effects import TrailSurface, BackgroundNoiseField, apply_post_processing
 from emotional_state import EmotionalCore, ConsequenceManager
-from reflection import ReflectionSystem, draw_pause_overlay, draw_choice_dialog, draw_ending_screen
+from reflection import ReflectionSystem, draw_pause_overlay, draw_ending_screen
 from spatial_metaphor import PersonalSpaceField, GravityField, StatusBar
 from data_export import DataExporter
 from intro_tutorial import show_tutorial
@@ -119,9 +119,22 @@ def _main_loop():
     # 2.2 初始化音效（在 pygame.init() 之后立即初始化，让 mixer 准备好）
     audio_manager = init_audio()
 
+    # 2.3 提前初始化 hand_tracker（必须先于 show_tutorial，否则引导界面无法追踪手）
+    hand_tracker = HandTracker()
+
+    # 2.4 初始化手势检测器（必须先于 show_tutorial，否则引导界面无法驱动摄像头+手势识别）
+    from gesture_detector import GestureDetector
+    gesture_detector = GestureDetector(
+        open_hold_sec=1.5,    # 张开手掌 1.5 秒 = 翻页 / 暂停反思（更宽容）
+        close_hold_sec=2.0,   # 握拳 2.0 秒 = 退出（更宽容，避免误触）
+        debounce_frames=3,
+        post_event_cooldown_sec=1.0,
+    )
+
     # 2.5 显示新手引导（8 张引导卡，含数据导出说明）
     print("显示新手引导界面...")
-    show_tutorial(screen, font_large, font_medium, font)
+    show_tutorial(screen, font_large, font_medium, font,
+                gesture_detector=gesture_detector, hand_tracker=hand_tracker, cap=cap)
     print("用户已确认，继续初始化...")
 
     # 2.6 视觉特效初始化
@@ -174,7 +187,7 @@ def _main_loop():
     # （见 personal_space 警觉联动处：只要在红圈内每 1.2s 追加一条"重"）
 
     # 3. 初始化所有模块
-    hand_tracker = HandTracker()           # 手部追踪
+    # hand_tracker 与 gesture_detector 已在 #2.3/#2.4 创建（早于 show_tutorial 调用），此处不再重复创建
     behavior_analyzer = BehaviorAnalyzer() # 行为分析
     particle_system = ParticleSystem()     # 记忆碎片系统
     target_object = TargetObject()         # 有机体目标对象
@@ -226,14 +239,7 @@ def _main_loop():
                         reflection_system.trigger_pause(screen)
                     else:
                         reflection_system.end_pause()
-                elif event.key == pygame.K_r:
-                    # R键：手动触发选择时刻
-                    # 若处于暂停状态，先结束暂停
-                    if reflection_system.is_paused:
-                        reflection_system.end_pause()
-                    reflection_system.choice_pending = True
-                    reflection_system.time_since_last_choice = 0.0
-                    print(">>> R键按下，触发选择时刻")
+                # R 键：选择时刻已移除，无操作
                 elif event.key == pygame.K_m:
                     # M键：切换静音
                     if audio_manager and audio_manager.is_available():
@@ -242,33 +248,7 @@ def _main_loop():
 
         # ESC 键：退出（仅由 Pygame 事件处理，移除 OpenCV waitKey 提升 FPS）
 
-        # === 处理暂停反思 ===
-        if reflection_system.is_paused:
-            draw_pause_overlay(
-                screen, target_object, emotional_core,
-                font_medium, font, 0.0
-            )
-            pygame.display.flip()
-            continue
-
-        # === 处理选择时刻 ===
-        if reflection_system.choice_pending:
-            # 记录当前数据用于生成有意义的提示
-            reflection_system.record_current_stats(emotional_core)
-            choice_result = _handle_choice_dialog(
-                screen, reflection_system, font_large, font_medium, font
-            )
-            if choice_result is not None:
-                reflection_system.choice_pending = False
-                if choice_result == 1:  # 选择"尝试改变"
-                    # 应用"改变"的具体效果
-                    reflection_system.apply_change_choice(
-                        emotional_core, particle_system, target_object
-                    )
-                    print(">>> 你选择了改变——生命体正在向你敞开")
-            else:
-                pygame.display.flip()
-                continue
+        # 选择时刻环节已移除（reflection_system.choice_pending 不再被触发）
 
         # === 初始化主循环状态变量（首次） ===
         if not hasattr(_main_loop, '_frame_w'):
@@ -307,13 +287,42 @@ def _main_loop():
         # 获取手部位置（不再在 OpenCV 上绘制，状态信息迁移到 Pygame）
         hand_position = hand_tracker.get_hand_position(frame)
 
+        # === 手势识别（每帧喂入 landmarks）===
+        landmarks_now = hand_tracker.get_landmarks()
+        current_gesture = gesture_detector.update(landmarks_now)
+        # 消费所有事件（优先取最新；close 优先级最高）
+        gesture_event = None
+        all_events = []
+        while True:
+            e = gesture_detector.consume_event()
+            if e is None:
+                break
+            all_events.append(e)
+        if 'close' in all_events:
+            gesture_event = 'close'  # close 优先级最高
+        elif 'open' in all_events:
+            gesture_event = 'open'
+
         # 记录轨迹点（按 frame 实际大小缩放到屏幕坐标）
         frame_h_now, frame_w_now = frame.shape[:2]
         _main_loop._frame_h = frame_h_now
         _main_loop._frame_w = frame_w_now
         fw = max(frame_w_now, 1)
+
+        # === 手势事件响应 ===
+        if gesture_event == 'open':
+            # 张开手掌持续 1 秒 → 暂停 / 继续反思
+            if not reflection_system.is_paused:
+                personal_space_snapshot = screen.copy()
+                reflection_system.trigger_pause(screen)
+            else:
+                reflection_system.end_pause()
+        elif gesture_event == 'close':
+            # 握拳持续 1.5 秒 → 退出程序（保留 ESC 兜底）
+            print(">>> 握拳手势触发，退出程序")
+            running = False
         fh = max(frame_h_now, 1)
-        if hand_position:
+        if hand_position and not reflection_system.is_paused:
             sx = hand_position['x'] * screen_w / fw
             sy = hand_position['y'] * screen_h / fh
             current_trajectory.append((sx, sy))
@@ -363,7 +372,7 @@ def _main_loop():
         # 5. 更新行为分析器（判断动作结束）
         action_data = behavior_analyzer.update(hand_position)
 
-        if action_data:
+        if action_data and not reflection_system.is_paused:
             # 动作结束！
             action_dict = action_data.to_dict()
             print(f"\n动作结束: speed={action_dict['speed']:.2f}, distance={action_dict['distance']:.2f}")
@@ -435,6 +444,31 @@ def _main_loop():
 
             # 记录动作后的状态
             state_after = emotional_core.current_state.value
+
+            # === 累计正/负向交互次数（用于结算界面判定结局） ===
+            # 注意：粒子系统的 create_trace_from_trajectory 用的是 'neutral' 分类，
+            # 不会触发 target_object.receive_impact 的计数逻辑——这里显式补一次
+            if classification in ('positive', 'negative'):
+                try:
+                    # target_object 类的方法实际叫 receive_impact，不是 apply_influence
+                    if hasattr(target_object, 'receive_impact'):
+                        hand_xy = None
+                        if hand_position:
+                            hand_xy = (sx, sy) if 'sx' in dir() else None
+                        # receive_impact 接受 source_position: Dict (含 x/y) 或 None
+                        src_dict = None
+                        if hand_xy is not None:
+                            src_dict = {'x': hand_xy[0], 'y': hand_xy[1]}
+                        target_object.receive_impact(
+                            value=intensity,
+                            source_position=src_dict,
+                            impact_type='touch',
+                            classification=classification,
+                            intensity_raw=intensity,
+                        )
+                except Exception as e:
+                    # 不阻断主流程，仅记录
+                    print(f"[warning] target_object.receive_impact 失败: {e}")
 
             # === 数据导出：记录到 CSV ===
             data_exporter.log_action(
@@ -863,19 +897,19 @@ def _main_loop():
 
         # === 顶部提示 ===
         top_hint = font.render(
-            "空格: 暂停反思  R: 选择时刻  ESC: 退出",
+            "空格: 暂停反思  ESC: 退出",
             True, (120, 120, 130)
         )
         screen.blit(top_hint, (10, 10))
 
-        # === 手部状态显示（替代 OpenCV 窗口） ===
+        # === 手部状态显示（替代 OpenCV 窗口，放在手势指示下方） ===
         if hand_position:
             # 手部检测成功
             hand_status = font.render(
                 "Hand Detected!",
                 True, (0, 200, 100)
             )
-            screen.blit(hand_status, (10, 35))
+            screen.blit(hand_status, (10, 62))
 
             # 在 Pygame 上画指尖标记（按 frame 实际大小缩放）
             frame_w = max(getattr(_main_loop, '_frame_w', 1280), 1)
@@ -892,7 +926,7 @@ def _main_loop():
                 "No Hand Detected",
                 True, (220, 80, 80)
             )
-            screen.blit(hand_status, (10, 35))
+            screen.blit(hand_status, (10, 62))
 
         # === FPS 显示（每 30 帧更新一次）===
         if not hasattr(_main_loop, '_fps_counter'):
@@ -905,13 +939,54 @@ def _main_loop():
             elapsed = (now - _main_loop._fps_last_time) / 1000.0
             _main_loop._fps_value = 30.0 / max(elapsed, 0.001)
             _main_loop._fps_last_time = now
-        fps_text = font.render(f"FPS: {_main_loop._fps_value:.1f}", True, (200, 200, 200))
-        screen.blit(fps_text, (1280 - 100, 10))
+
+        # === 右上角：手势状态（替代 FPS 显示） ===
+        cur_g_top = gesture_detector.get_current_gesture()
+        if cur_g_top != 'unknown':
+            # 手势识别中：显示名称 + 进度
+            progress_top = gesture_detector.get_hold_progress()
+            g_label_top = '✋ 张开手掌' if cur_g_top == 'open' else '✊ 握拳'
+            color_top = (140, 200, 160) if cur_g_top == 'open' else (200, 130, 130)
+            text_top = f"{g_label_top}  {progress_top * 100:.0f}%"
+            hand_hint = font.render(text_top, True, color_top)
+            screen.blit(hand_hint, (1280 - 240, 10))
+            # 下方小进度条
+            bar_y_top = 36
+            bar_x_top = 1280 - 240
+            bar_w_top = 220
+            pygame.draw.rect(screen, (60, 58, 70),
+                             (bar_x_top, bar_y_top, bar_w_top, 8), border_radius=4)
+            fill_w_top = int(bar_w_top * progress_top)
+            pygame.draw.rect(screen, color_top,
+                             (bar_x_top, bar_y_top, fill_w_top, 8), border_radius=4)
+        else:
+            # 未识别手势：显示 FPS（兜底调试信息）
+            fps_text = font.render(f"FPS: {_main_loop._fps_value:.1f}", True, (130, 130, 140))
+            screen.blit(fps_text, (1280 - 100, 10))
 
         # === 静音状态显示（FPS 下方）===
         if audio_manager and audio_manager.is_available() and audio_manager.is_muted():
             mute_text = font.render("🔇 已静音 (M键开启)", True, (220, 100, 100))
-            screen.blit(mute_text, (1280 - 220, 35))
+            screen.blit(mute_text, (1280 - 220, 60))
+
+        # === 手势持续时间进度提示：仅右上角显示（屏幕底部居中卡片已去除） ===
+        # 此处保留空位以便以后扩展；右上角的实时提示在主循环前面已绘制
+
+        # === 常驻手势提示（屏幕左上角，按键指示下方，仅在未触发时显示） ===
+        cur_g_main2 = gesture_detector.get_current_gesture()
+        if cur_g_main2 == 'unknown':
+            hint_persist = font.render(
+                "✋ 张开手掌 = 暂停反思  |  ✊ 握拳 = 退出",
+                True, (160, 165, 175)
+            )
+            screen.blit(hint_persist, (10, 38))
+
+        # === 处理暂停反思（在所有渲染之后画 overlay，仍需保持手势识别） ===
+        if reflection_system.is_paused:
+            draw_pause_overlay(
+                screen, target_object, emotional_core,
+                font_medium, font, 0.0
+            )
 
         pygame.display.flip()
         frame_count += 1
@@ -956,7 +1031,10 @@ def _main_loop():
             font_large, font_medium, font,
             positive_count=target_object.positive_count,
             negative_count=target_object.negative_count,
-            fragment_count=len(particle_system.fragments) + target_object.fragment_count,
+            fragment_count=particle_system.get_particle_count() + target_object.fragment_count,
+            gesture_detector=gesture_detector, hand_tracker=hand_tracker, cap=cap,
+            relationship_quality=emotional_core.get_relationship_quality(),
+            final_state=emotional_core.get_state_description(),
         )
     except Exception as e:
         print(f"反思界面显示失败：{e}")
@@ -972,42 +1050,7 @@ def _main_loop():
     sys.exit()
 
 
-def _handle_choice_dialog(screen, reflection_system, font_large, font_medium, font):
-    """
-    处理选择时刻对话框
-
-    Returns:
-        0 = 选择"继续当前方式"
-        1 = 选择"尝试改变"
-        None = 仍在选择中
-    """
-    selected = 0
-    clock = pygame.time.Clock()
-    choosing = True
-
-    while choosing:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit(0)
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return 0  # 跳过选择
-                elif event.key in (pygame.K_LEFT, pygame.K_a):
-                    selected = 0
-                elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                    selected = 1
-                elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    return selected
-
-        message = reflection_system.get_choice_message(reflection_system.choice_count)
-        draw_choice_dialog(
-            screen, message,
-            font_large, font_medium, font,
-            selected
-        )
-        pygame.display.flip()
-        clock.tick(60)
+# 选择时刻对话框函数 _handle_choice_dialog 已移除
 
 
 def _draw_text_lines(screen, lines, font, color, center_x, start_y, line_spacing=None):
@@ -1092,18 +1135,46 @@ def _show_intro_screen(screen, font_large, font_medium, font):
 
 
 def _show_reflection_screen(screen, font_large, font_medium, font,
-                             positive_count, negative_count, fragment_count):
+                             positive_count, negative_count, fragment_count,
+                             gesture_detector=None, hand_tracker=None, cap=None,
+                             relationship_quality=0.0, final_state="平静"):
     """
-    结束反思界面：根据用户本次交互的正/负向比例，给出反思文字
+    结束反思界面：根据关系质量 + 生命体最终状态，给出反思文字
+
+    结局判定（基于生命体状态条 / relationship_quality）：
+        - 未交互：|quality| < 0.05 且 total == 0
+        - 温柔（生命体被你治愈）：quality >= 0.4 且 final_state in ("敞开", "平静")
+        - 平和：quality 在 [0.1, 0.4) 且 final_state != "退缩"
+        - 急躁：quality 在 [-0.3, 0.1) 且 final_state != "退缩"
+        - 粗暴：quality < -0.3 或 final_state in ("退缩", "被忽视")
     """
     clock = pygame.time.Clock()
     waiting = True
     blink = 0
     total = positive_count + negative_count
+
+    # === 结局判定：以动作次数比例为主，以关系质量为辅助 ===
+    # 主指标：positive_count / (positive_count + negative_count)
+    # 辅指标：relationship_quality（生命体状态条的数值，仅在 total=0 时用）
     if total == 0:
-        ratio_label = "未交互"
-        ratio_value = 0.0
+        # 没有动作记录：用关系质量判断
+        if abs(relationship_quality) < 0.05:
+            ratio_label = "未交互"
+            ratio_value = 0.0
+        elif relationship_quality >= 0.3:
+            ratio_label = "温柔"
+            ratio_value = 1.0
+        elif relationship_quality >= 0.05:
+            ratio_label = "平和"
+            ratio_value = 0.5
+        elif relationship_quality >= -0.2:
+            ratio_label = "急躁"
+            ratio_value = -0.3
+        else:
+            ratio_label = "粗暴"
+            ratio_value = -1.0
     else:
+        # 有动作记录：以 positive 比例为主判定
         ratio_value = positive_count / total
         if ratio_value >= 0.75:
             ratio_label = "温柔"
@@ -1125,7 +1196,7 @@ def _show_reflection_screen(screen, font_large, font_medium, font,
             "下次面对他人时，",
             "愿你选择走近，而不是漠视。",
         ]
-    elif ratio_value >= 0.6:
+    elif ratio_label == "温柔":
         reflection_lines = [
             f"这一次，你以 {ratio_label} 为主。",
             f"  治愈动作 {positive_count} 次，伤害动作 {negative_count} 次。",
@@ -1136,9 +1207,20 @@ def _show_reflection_screen(screen, font_large, font_medium, font,
             "你证明了一件事：",
             "温柔，是有回响的。",
         ]
-    elif ratio_value >= 0.4:
+    elif ratio_label == "平和":
         reflection_lines = [
-            f"这一次，你的动作在 {ratio_label} 与粗暴之间摇摆。",
+            f"这一次，你的动作以 {ratio_label} 为主。",
+            f"  治愈动作 {positive_count} 次，伤害动作 {negative_count} 次。",
+            "",
+            "它正在慢慢舒展，",
+            "暗色也减轻了一些。",
+            "",
+            "下一次，",
+            "愿你再多一些耐心与贴近。",
+        ]
+    elif ratio_label == "急躁":
+        reflection_lines = [
+            f"这一次，你的动作以 {ratio_label} 为主。",
             f"  治愈动作 {positive_count} 次，伤害动作 {negative_count} 次。",
             "",
             "它的身上既有柔软的记忆，",
@@ -1147,7 +1229,7 @@ def _show_reflection_screen(screen, font_large, font_medium, font,
             "我们常常以为自己的言行无关紧要，",
             "但其实，痕迹正在累积。",
         ]
-    else:
+    else:  # 粗暴
         reflection_lines = [
             f"这一次，你的动作以 {ratio_label} 为主。",
             f"  治愈动作 {positive_count} 次，伤害动作 {negative_count} 次。",
@@ -1171,6 +1253,20 @@ def _show_reflection_screen(screen, font_large, font_medium, font,
             if event.type == pygame.KEYDOWN:
                 waiting = False
 
+        # === 手势控制：握拳关闭结算界面 ===
+        if (gesture_detector is not None and hand_tracker is not None
+                and cap is not None):
+            ret, frame = cap.read()
+            if ret:
+                frame = cv2.flip(frame, 1)
+                hand_tracker.get_hand_position(frame)
+                landmarks_now = hand_tracker.get_landmarks()
+                gesture_detector.update(landmarks_now)
+                # 握拳事件触发即关闭
+                if gesture_detector.consume_event() == 'close':
+                    waiting = False
+                    break
+
         screen.fill((14, 12, 18))
 
         # 标题
@@ -1185,26 +1281,58 @@ def _show_reflection_screen(screen, font_large, font_medium, font,
         stats_lines = [
             f"本次共生成 {fragment_count} 个记忆碎片",
             f"  治愈（轻柔）：{positive_count}    伤害（剧烈）：{negative_count}",
+            f"  生命体最终状态：{final_state}",
             f"  总体倾向：{ratio_label}",
             "",
         ]
         _draw_text_lines(
             screen, stats_lines, font_medium,
             (200, 200, 210),
-            screen.get_width() // 2, 200, line_spacing=40,
+            screen.get_width() // 2, 180, line_spacing=40,
         )
+
+        # === 关系质量条（与生命体状态条一致） ===
+        bar_width = 400
+        bar_height = 18
+        bar_x = (screen.get_width() - bar_width) // 2
+        bar_y = 340
+        # 背景条
+        pygame.draw.rect(screen, (40, 40, 50),
+                         (bar_x, bar_y, bar_width, bar_height), border_radius=8)
+        # 中线
+        center_x = bar_x + bar_width // 2
+        pygame.draw.line(screen, (150, 150, 160),
+                         (center_x, bar_y - 4), (center_x, bar_y + bar_height + 4), 2)
+        # 填充
+        if relationship_quality >= 0:
+            fill_w = int(bar_width * 0.5 * relationship_quality)
+            color = (180, 220, 150)
+            pygame.draw.rect(screen, color,
+                             (center_x, bar_y, fill_w, bar_height), border_radius=8)
+        else:
+            fill_w = int(bar_width * 0.5 * abs(relationship_quality))
+            color = (220, 120, 100)
+            pygame.draw.rect(screen, color,
+                             (center_x - fill_w, bar_y, fill_w, bar_height),
+                             border_radius=8)
+        # 标签
+        q_label = font_medium.render(
+            f"关系质量: {relationship_quality:+.2f}", True, (210, 210, 220)
+        )
+        q_rect = q_label.get_rect(center=(screen.get_width() // 2, bar_y + bar_height + 22))
+        screen.blit(q_label, q_rect)
 
         # 反思正文
         _draw_text_lines(
             screen, reflection_lines, font_medium,
             (220, 215, 205),
-            screen.get_width() // 2, 360, line_spacing=42,
+            screen.get_width() // 2, 420, line_spacing=42,
         )
 
         # 闪烁提示
         blink = (blink + 1) % 60
         if blink < 40:
-            hint = font.render("按 任意键  退出", True, (160, 160, 170))
+            hint = font.render("按 任意键 或 握拳  退出", True, (160, 160, 170))
             rect = hint.get_rect(center=(screen.get_width() // 2, screen.get_height() - 50))
             screen.blit(hint, rect)
 

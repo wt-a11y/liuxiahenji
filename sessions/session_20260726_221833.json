@@ -1,0 +1,340 @@
+{
+  "session_id": "20260726_221833",
+  "start_time": "2026-07-26 22:18:33",
+  "end_time": "2026-07-26 22:18:50",
+  "duration_sec": 17.01667094230652,
+  "ending": "mixed",
+  "summary": {
+    "total_actions": 2,
+    "positive_actions": 2,
+    "negative_actions": 0,
+    "neutral_actions": 0,
+    "alert_total_sec": 0.0,
+    "state_transitions_count": 33,
+    "fragments_count": 0
+  },
+  "actions": [
+    {
+      "timestamp": "2026-07-26T22:18:34.820923",
+      "elapsed_sec": 1.0054209232330322,
+      "action": {
+        "speed": 0.0,
+        "distance": 0.0,
+        "duration": 0.956275463104248,
+        "trajectory": [
+          [
+            756,
+            498
+          ],
+          [
+            756,
+            498
+          ],
+          [
+            756,
+            498
+          ],
+          [
+            756,
+            498
+          ],
+          [
+            756,
+            498
+          ],
+          [
+            756,
+            498
+          ]
+        ],
+        "peak_speed": 0.0,
+        "accel_variance": 0.0,
+        "intensity": 0.1,
+        "classification": "positive",
+        "start_position": [
+          756,
+          498
+        ]
+      },
+      "state_before": "calm",
+      "state_after": "open",
+      "inside_personal_space": false
+    },
+    {
+      "timestamp": "2026-07-26T22:18:37.644658",
+      "elapsed_sec": 3.8291563987731934,
+      "action": {
+        "speed": 0.7249257678127874,
+        "distance": 115.79913039060862,
+        "duration": 2.6623215675354004,
+        "trajectory": [
+          [
+            756,
+            498
+          ],
+          [
+            756,
+            498
+          ],
+          [
+            761,
+            494
+          ],
+          [
+            770,
+            475
+          ],
+          [
+            779,
+            482
+          ],
+          [
+            800,
+            475
+          ],
+          [
+            798,
+            480
+          ],
+          [
+            815,
+            474
+          ],
+          [
+            814,
+            478
+          ],
+          [
+            822,
+            476
+          ],
+          [
+            822,
+            476
+          ],
+          [
+            826,
+            475
+          ],
+          [
+            826,
+            475
+          ],
+          [
+            826,
+            475
+          ],
+          [
+            826,
+            475
+          ],
+          [
+            827,
+            475
+          ],
+          [
+            827,
+            475
+          ],
+          [
+            827,
+            475
+          ],
+          [
+            832,
+            473
+          ],
+          [
+            840,
+            470
+          ]
+        ],
+        "peak_speed": 132.09451699124318,
+        "accel_variance": 2176.7197447050016,
+        "intensity": 0.133,
+        "classification": "positive",
+        "start_position": [
+          756,
+          498
+        ]
+      },
+      "state_before": "open",
+      "state_after": "open",
+      "inside_personal_space": false
+    }
+  ],
+  "state_transitions": [
+    {
+      "elapsed_sec": 1.0054209232330322,
+      "from": "calm",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 1.7366669178009033,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 1.9050004482269287,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 2.0725769996643066,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 2.2465291023254395,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 2.4788527488708496,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 2.636587142944336,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 4.103799819946289,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 5.090964078903198,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 5.934326648712158,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 6.030562162399292,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 6.113368511199951,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 6.207473993301392,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 6.773847341537476,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 7.048933506011963,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 7.203857183456421,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 7.300209283828735,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 7.386838436126709,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 8.194310665130615,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 8.287890911102295,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 8.535123109817505,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 8.62732744216919,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 8.817181587219238,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 8.960974216461182,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 10.954771995544434,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 11.101407766342163,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 11.729109764099121,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 11.829960107803345,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 12.26118779182434,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 13.973968029022217,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 15.735459089279175,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 15.903201818466187,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 16.060336589813232,
+      "from": "withdrawn",
+      "to": "open"
+    }
+  ],
+  "fragments": [],
+  "extra": {
+    "final_effect_score": 0.0,
+    "positive_count": 0,
+    "negative_count": 0,
+    "total_fragments": 0
+  }
+}

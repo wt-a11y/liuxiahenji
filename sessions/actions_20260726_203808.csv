@@ -1,0 +1,2 @@
+timestamp,session_time_sec,action_type_cn,action_type,intensity,distance_px,duration_sec,speed_avg,acceleration,state_before_cn,state_before,state_after_cn,state_after,inside_personal_space
+2026-07-26T20:38:09.949019,1.01,轻柔,positive,0.100,0.0,0.97,0.0,0.0,警觉,alert,警觉,alert,1

@@ -1,0 +1,78 @@
+{
+  "session_id": "20260726_203808",
+  "start_time": "2026-07-26 20:38:08",
+  "end_time": "2026-07-26 20:38:10",
+  "duration_sec": 1.874509334564209,
+  "ending": "mixed",
+  "summary": {
+    "total_actions": 1,
+    "positive_actions": 1,
+    "negative_actions": 0,
+    "neutral_actions": 0,
+    "alert_total_sec": 1.8389697074890137,
+    "state_transitions_count": 1,
+    "fragments_count": 0
+  },
+  "actions": [
+    {
+      "timestamp": "2026-07-26T20:38:09.949019",
+      "elapsed_sec": 1.0105297565460205,
+      "action": {
+        "speed": 0.0,
+        "distance": 0.0,
+        "duration": 0.9736652374267578,
+        "trajectory": [
+          [
+            732,
+            400
+          ],
+          [
+            732,
+            400
+          ],
+          [
+            732,
+            400
+          ],
+          [
+            732,
+            400
+          ],
+          [
+            732,
+            400
+          ],
+          [
+            732,
+            400
+          ]
+        ],
+        "peak_speed": 0.0,
+        "accel_variance": 0.0,
+        "intensity": 0.1,
+        "classification": "positive",
+        "start_position": [
+          732,
+          400
+        ]
+      },
+      "state_before": "alert",
+      "state_after": "alert",
+      "inside_personal_space": true
+    }
+  ],
+  "state_transitions": [
+    {
+      "elapsed_sec": 0.03553962707519531,
+      "from": "calm",
+      "to": "alert"
+    }
+  ],
+  "fragments": [],
+  "extra": {
+    "final_effect_score": 0.0,
+    "positive_count": 0,
+    "negative_count": 0,
+    "total_fragments": 0
+  }
+}

@@ -16,6 +16,7 @@
 
 import sys
 import pygame
+import cv2
 
 
 def _draw_text_lines(screen, lines, font, color, center_x, start_y, line_spacing=None):
@@ -34,7 +35,8 @@ def _draw_text_lines(screen, lines, font, color, center_x, start_y, line_spacing
     return y
 
 
-def show_tutorial(screen, font_large, font_medium, font):
+def show_tutorial(screen, font_large, font_medium, font,
+                gesture_detector=None, hand_tracker=None, cap=None):
     """
     显示新手引导。
 
@@ -218,6 +220,27 @@ def show_tutorial(screen, font_large, font_medium, font):
         if page >= len(pages):
             break
 
+        # === 驱动摄像头 + 手势检测（每帧）===
+        if hand_tracker is not None and cap is not None and gesture_detector is not None:
+            ret, frame = cap.read()
+            if ret:
+                frame = cv2.flip(frame, 1)  # 镜像翻转（与主循环保持一致）
+                hand_tracker.get_hand_position(frame)
+                landmarks_now = hand_tracker.get_landmarks()
+                gesture_detector.update(landmarks_now)
+
+        # === 手势控制（每帧消费事件，避免堆积）===
+        if gesture_detector is not None:
+            evt = gesture_detector.consume_event()
+            if evt == 'open':
+                page += 1
+                if page >= len(pages):
+                    waiting = False
+                    break
+                continue  # 跳到下一帧，不渲染当前页（手感更顺畅）
+            elif evt == 'close':
+                return  # 跳过引导
+
         # === 渲染当前页 ===
         screen.fill((18, 16, 22))
 
@@ -260,8 +283,32 @@ def show_tutorial(screen, font_large, font_medium, font):
             screen.blit(hint, rect)
 
         # 跳过提示（左下角）
-        skip = font.render("ESC 跳过", True, (80, 80, 90))
+        skip = font.render("握拳跳过", True, (80, 80, 90))
         screen.blit(skip, (20, screen.get_height() - 35))
+
+        # 翻页提示（右下角，仅当未触发手势时显示）
+        if gesture_detector is None or gesture_detector.get_current_gesture() == 'unknown':
+            advance_hint = font.render("张开手掌 → 下一张", True, (140, 180, 160))
+            screen.blit(advance_hint, (screen.get_width() - 260, screen.get_height() - 35))
+
+        # 手势持续进度（右下角）
+        if gesture_detector is not None:
+            gest_progress_t = gesture_detector.get_hold_progress()
+            cur_g = gesture_detector.get_current_gesture()
+            if cur_g != 'unknown' and gest_progress_t > 0:
+                g_name = '张开手掌' if cur_g == 'open' else '握拳'
+                bar_w = 120
+                bar_x = screen.get_width() - bar_w - 20
+                bar_y = screen.get_height() - 35
+                # 进度条背景
+                pygame.draw.rect(screen, (50, 50, 60), (bar_x, bar_y, bar_w, 8), border_radius=4)
+                # 进度条填充
+                fill_w = int(bar_w * gest_progress_t)
+                fill_color = (140, 200, 160) if cur_g == 'open' else (200, 130, 130)
+                pygame.draw.rect(screen, fill_color, (bar_x, bar_y, fill_w, 8), border_radius=4)
+                # 标签
+                g_label_small = font.render(g_name, True, (180, 180, 195))
+                screen.blit(g_label_small, (bar_x, bar_y - 22))
 
         pygame.display.flip()
         clock.tick(60)

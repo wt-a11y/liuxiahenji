@@ -57,6 +57,8 @@ class HandTracker:
         self._scale = 1.0                    # 检测到原图的缩放比例
         self._x_start = 0                    # 裁剪起始 x
         self._y_start = 0                    # 裁剪起始 y
+        # 当前帧检测到的 landmarks（供手势识别使用），无手时为 None
+        self._current_landmarks = None
         self._crop_w = 1280                  # 裁剪宽度（默认）
         self._crop_h = 720                   # 裁剪高度（默认）
         self._static_frame_count = 0         # 连续静止帧数（达到阈值后冻结）
@@ -119,6 +121,7 @@ class HandTracker:
 
         if results.multi_hand_landmarks:
             hand_landmarks = results.multi_hand_landmarks[0]
+            self._current_landmarks = hand_landmarks
 
             # === 多点平均（指尖 + 手腕 + 中指 MCP） ===
             tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
@@ -224,6 +227,8 @@ class HandTracker:
             self._last_velocity = (0.0, 0.0)
             self._smooth_pos = None
             self._last_pos = None
+            # 关键：清掉 landmarks 缓存（避免拿"上次的张手"误判当前无手势）
+            self._current_landmarks = None
             return None
 
         # 快速运动中：尝试外推
@@ -232,6 +237,7 @@ class HandTracker:
             self._last_velocity = (0.0, 0.0)
             self._smooth_pos = None
             self._last_pos = None
+            self._current_landmarks = None
             return None
 
         if self._smooth_pos is not None and self._last_detect_time is not None:
@@ -284,6 +290,15 @@ class HandTracker:
             return (wrist_pos, index_tip_pos)
 
         return None
+
+    def get_landmarks(self):
+        """
+        获取最近一次成功检测到的 MediaPipe 手部关键点对象（含 .landmark 列表）。
+
+        Returns:
+            hand_landmarks 对象或 None（未检测到手）。
+        """
+        return self._current_landmarks
 
     def draw_landmarks(self, frame, highlight_wrist: bool = True, highlight_index_tip: bool = True) -> None:
         """在图像上绘制手部关键点"""

@@ -55,12 +55,9 @@ class ReflectionSystem:
             return 'pause'
         
         self.time_since_last_choice += dt
-        
-        if self.time_since_last_choice >= self.choice_interval:
-            self.time_since_last_choice = 0.0
-            self.choice_count += 1
-            self.choice_pending = True
-            return 'choice'
+
+        # 选择时刻已移除：不自动触发任何 choice_pending
+        # 保留 time_since_last_choice 字段以兼容外部代码
         
         return None
     
@@ -266,8 +263,8 @@ def draw_pause_overlay(screen: pygame.Surface,
     screen.blit(harm_label, (bar_x - 50, bar_y))
     screen.blit(care_label, (bar_x + bar_width + 10, bar_y))
     
-    # 提示
-    hint = font_small.render("按 空格键 继续", True, (160, 160, 170))
+    # 提示（键盘 + 手势）
+    hint = font_small.render("空格键 / ✋ 张开手掌 继续", True, (160, 160, 170))
     hint_rect = hint.get_rect(center=(screen.get_width() // 2, screen.get_height() - 60))
     screen.blit(hint, hint_rect)
     

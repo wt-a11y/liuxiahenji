@@ -1,0 +1,989 @@
+{
+  "session_id": "20260726_221221",
+  "start_time": "2026-07-26 22:12:21",
+  "end_time": "2026-07-26 22:12:54",
+  "duration_sec": 32.387648820877075,
+  "ending": "mixed",
+  "summary": {
+    "total_actions": 7,
+    "positive_actions": 6,
+    "negative_actions": 1,
+    "neutral_actions": 0,
+    "alert_total_sec": 2.5869312286376953,
+    "state_transitions_count": 36,
+    "fragments_count": 0
+  },
+  "actions": [
+    {
+      "timestamp": "2026-07-26T22:12:22.897800",
+      "elapsed_sec": 0.9124045372009277,
+      "action": {
+        "speed": 0.0965420650752237,
+        "distance": 5.0,
+        "duration": 0.8631815910339355,
+        "trajectory": [
+          [
+            793,
+            505
+          ],
+          [
+            793,
+            505
+          ],
+          [
+            793,
+            505
+          ],
+          [
+            793,
+            505
+          ],
+          [
+            793,
+            505
+          ],
+          [
+            793,
+            505
+          ],
+          [
+            793,
+            505
+          ],
+          [
+            793,
+            505
+          ],
+          [
+            789,
+            508
+          ]
+        ],
+        "peak_speed": 52.22395155004495,
+        "accel_variance": 333.9601365920134,
+        "intensity": 0.1131,
+        "classification": "positive",
+        "start_position": [
+          793,
+          505
+        ]
+      },
+      "state_before": "calm",
+      "state_after": "open",
+      "inside_personal_space": false
+    },
+    {
+      "timestamp": "2026-07-26T22:12:31.603177",
+      "elapsed_sec": 9.617781639099121,
+      "action": {
+        "speed": 2.278262869881924,
+        "distance": 1145.1075360509944,
+        "duration": 8.377051591873169,
+        "trajectory": [
+          [
+            786,
+            512
+          ],
+          [
+            790,
+            504
+          ],
+          [
+            804,
+            482
+          ],
+          [
+            803,
+            491
+          ],
+          [
+            818,
+            481
+          ],
+          [
+            812,
+            489
+          ],
+          [
+            816,
+            486
+          ],
+          [
+            816,
+            486
+          ],
+          [
+            818,
+            484
+          ],
+          [
+            835,
+            478
+          ],
+          [
+            868,
+            461
+          ],
+          [
+            877,
+            470
+          ],
+          [
+            933,
+            464
+          ],
+          [
+            917,
+            464
+          ],
+          [
+            939,
+            451
+          ],
+          [
+            925,
+            469
+          ],
+          [
+            947,
+            504
+          ],
+          [
+            921,
+            494
+          ],
+          [
+            918,
+            500
+          ],
+          [
+            879,
+            506
+          ],
+          [
+            795,
+            549
+          ],
+          [
+            797,
+            523
+          ],
+          [
+            756,
+            526
+          ],
+          [
+            748,
+            514
+          ],
+          [
+            663,
+            524
+          ],
+          [
+            679,
+            501
+          ],
+          [
+            633,
+            480
+          ],
+          [
+            660,
+            472
+          ],
+          [
+            628,
+            450
+          ],
+          [
+            654,
+            438
+          ],
+          [
+            641,
+            404
+          ],
+          [
+            659,
+            401
+          ],
+          [
+            650,
+            362
+          ],
+          [
+            665,
+            379
+          ],
+          [
+            665,
+            367
+          ],
+          [
+            673,
+            380
+          ],
+          [
+            672,
+            370
+          ],
+          [
+            677,
+            386
+          ],
+          [
+            677,
+            395
+          ],
+          [
+            679,
+            400
+          ],
+          [
+            680,
+            408
+          ],
+          [
+            680,
+            408
+          ],
+          [
+            681,
+            409
+          ],
+          [
+            676,
+            408
+          ],
+          [
+            665,
+            407
+          ],
+          [
+            665,
+            407
+          ],
+          [
+            662,
+            407
+          ],
+          [
+            663,
+            420
+          ],
+          [
+            662,
+            455
+          ],
+          [
+            662,
+            471
+          ],
+          [
+            662,
+            486
+          ],
+          [
+            662,
+            495
+          ],
+          [
+            662,
+            508
+          ],
+          [
+            662,
+            513
+          ],
+          [
+            662,
+            518
+          ]
+        ],
+        "peak_speed": 594.2110077517325,
+        "accel_variance": 17975.043417874836,
+        "intensity": 0.2486,
+        "classification": "positive",
+        "start_position": [
+          786,
+          512
+        ]
+      },
+      "state_before": "open",
+      "state_after": "open",
+      "inside_personal_space": false
+    },
+    {
+      "timestamp": "2026-07-26T22:12:34.612686",
+      "elapsed_sec": 12.627291202545166,
+      "action": {
+        "speed": 3.9464458230034825,
+        "distance": 598.5049658299066,
+        "duration": 2.52761173248291,
+        "trajectory": [
+          [
+            926,
+            417
+          ],
+          [
+            928,
+            433
+          ],
+          [
+            935,
+            476
+          ],
+          [
+            930,
+            443
+          ],
+          [
+            925,
+            408
+          ],
+          [
+            924,
+            402
+          ],
+          [
+            920,
+            367
+          ],
+          [
+            938,
+            415
+          ],
+          [
+            968,
+            477
+          ],
+          [
+            949,
+            444
+          ],
+          [
+            946,
+            439
+          ],
+          [
+            956,
+            462
+          ],
+          [
+            985,
+            525
+          ],
+          [
+            961,
+            483
+          ],
+          [
+            957,
+            486
+          ],
+          [
+            935,
+            463
+          ],
+          [
+            914,
+            464
+          ],
+          [
+            901,
+            464
+          ],
+          [
+            879,
+            464
+          ],
+          [
+            871,
+            465
+          ],
+          [
+            863,
+            465
+          ],
+          [
+            858,
+            465
+          ],
+          [
+            850,
+            465
+          ]
+        ],
+        "peak_speed": 765.7986482800143,
+        "accel_variance": 58018.52799886292,
+        "intensity": 0.2914,
+        "classification": "positive",
+        "start_position": [
+          926,
+          417
+        ]
+      },
+      "state_before": "open",
+      "state_after": "open",
+      "inside_personal_space": false
+    },
+    {
+      "timestamp": "2026-07-26T22:12:42.218795",
+      "elapsed_sec": 20.233399629592896,
+      "action": {
+        "speed": 0.0,
+        "distance": 0.0,
+        "duration": 0.32605719566345215,
+        "trajectory": [
+          [
+            625,
+            558
+          ],
+          [
+            625,
+            558
+          ],
+          [
+            625,
+            558
+          ]
+        ],
+        "peak_speed": 0.0,
+        "accel_variance": 0.0,
+        "intensity": 0.1,
+        "classification": "positive",
+        "start_position": [
+          625,
+          558
+        ]
+      },
+      "state_before": "calm",
+      "state_after": "open",
+      "inside_personal_space": false
+    },
+    {
+      "timestamp": "2026-07-26T22:12:45.873914",
+      "elapsed_sec": 23.888519048690796,
+      "action": {
+        "speed": 8.69672337556164,
+        "distance": 1426.3438800655997,
+        "duration": 2.7334890365600586,
+        "trajectory": [
+          [
+            964,
+            557
+          ],
+          [
+            952,
+            567
+          ],
+          [
+            917,
+            593
+          ],
+          [
+            931,
+            549
+          ],
+          [
+            927,
+            487
+          ],
+          [
+            924,
+            447
+          ],
+          [
+            920,
+            383
+          ],
+          [
+            839,
+            392
+          ],
+          [
+            547,
+            229
+          ],
+          [
+            669,
+            334
+          ],
+          [
+            543,
+            278
+          ],
+          [
+            684,
+            358
+          ],
+          [
+            663,
+            341
+          ],
+          [
+            765,
+            395
+          ],
+          [
+            819,
+            392
+          ],
+          [
+            845,
+            391
+          ],
+          [
+            868,
+            390
+          ],
+          [
+            877,
+            389
+          ],
+          [
+            890,
+            389
+          ],
+          [
+            895,
+            388
+          ],
+          [
+            900,
+            388
+          ]
+        ],
+        "peak_speed": 2230.3532640676603,
+        "accel_variance": 280801.247264039,
+        "intensity": 1.0,
+        "classification": "negative",
+        "start_position": [
+          964,
+          557
+        ]
+      },
+      "state_before": "open",
+      "state_after": "withdrawn",
+      "inside_personal_space": false
+    },
+    {
+      "timestamp": "2026-07-26T22:12:46.567794",
+      "elapsed_sec": 24.582398414611816,
+      "action": {
+        "speed": 0.0,
+        "distance": 0.0,
+        "duration": 0.14701390266418457,
+        "trajectory": [
+          [
+            881,
+            395
+          ],
+          [
+            881,
+            395
+          ]
+        ],
+        "peak_speed": 0.0,
+        "accel_variance": 0.0,
+        "intensity": 0.1,
+        "classification": "positive",
+        "start_position": [
+          881,
+          395
+        ]
+      },
+      "state_before": "withdrawn",
+      "state_after": "open",
+      "inside_personal_space": false
+    },
+    {
+      "timestamp": "2026-07-26T22:12:53.427722",
+      "elapsed_sec": 31.44232702255249,
+      "action": {
+        "speed": 3.4824009493282584,
+        "distance": 1064.3507353326838,
+        "duration": 5.0939507484436035,
+        "trajectory": [
+          [
+            773,
+            509
+          ],
+          [
+            799,
+            492
+          ],
+          [
+            842,
+            466
+          ],
+          [
+            859,
+            455
+          ],
+          [
+            884,
+            440
+          ],
+          [
+            842,
+            464
+          ],
+          [
+            820,
+            475
+          ],
+          [
+            824,
+            480
+          ],
+          [
+            866,
+            483
+          ],
+          [
+            877,
+            493
+          ],
+          [
+            933,
+            510
+          ],
+          [
+            902,
+            523
+          ],
+          [
+            920,
+            570
+          ],
+          [
+            867,
+            568
+          ],
+          [
+            819,
+            595
+          ],
+          [
+            815,
+            602
+          ],
+          [
+            780,
+            660
+          ],
+          [
+            824,
+            629
+          ],
+          [
+            879,
+            638
+          ],
+          [
+            889,
+            600
+          ],
+          [
+            949,
+            551
+          ],
+          [
+            920,
+            554
+          ],
+          [
+            929,
+            537
+          ],
+          [
+            891,
+            550
+          ],
+          [
+            839,
+            545
+          ],
+          [
+            842,
+            542
+          ],
+          [
+            825,
+            521
+          ],
+          [
+            825,
+            521
+          ],
+          [
+            817,
+            511
+          ],
+          [
+            819,
+            520
+          ],
+          [
+            812,
+            528
+          ],
+          [
+            814,
+            524
+          ],
+          [
+            804,
+            523
+          ],
+          [
+            805,
+            516
+          ],
+          [
+            798,
+            508
+          ],
+          [
+            798,
+            508
+          ],
+          [
+            794,
+            504
+          ],
+          [
+            794,
+            504
+          ],
+          [
+            794,
+            503
+          ],
+          [
+            794,
+            503
+          ],
+          [
+            793,
+            503
+          ],
+          [
+            793,
+            503
+          ],
+          [
+            793,
+            503
+          ],
+          [
+            793,
+            503
+          ]
+        ],
+        "peak_speed": 604.4336685602225,
+        "accel_variance": 33519.02883351105,
+        "intensity": 0.2511,
+        "classification": "positive",
+        "start_position": [
+          773,
+          509
+        ]
+      },
+      "state_before": "open",
+      "state_after": "open",
+      "inside_personal_space": false
+    }
+  ],
+  "state_transitions": [
+    {
+      "elapsed_sec": 0.9124045372009277,
+      "from": "calm",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 1.322211742401123,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 1.4868378639221191,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 1.719167709350586,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 1.8108570575714111,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 2.2342782020568848,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 2.4210987091064453,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 2.579524278640747,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 3.203518867492676,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 3.300245523452759,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 5.804157257080078,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 5.804157257080078,
+      "from": "open",
+      "to": "alert"
+    },
+    {
+      "elapsed_sec": 8.391088485717773,
+      "from": "alert",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 8.889274835586548,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 10.265493392944336,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 10.557463645935059,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 10.709759950637817,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 11.153111934661865,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 11.255428552627563,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 11.616033792495728,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 11.717792510986328,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 11.902177333831787,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 12.071205615997314,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 12.170917749404907,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 15.107389450073242,
+      "from": "open",
+      "to": "calm"
+    },
+    {
+      "elapsed_sec": 20.233399629592896,
+      "from": "calm",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 21.318174839019775,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 23.45905900001526,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 23.888519048690796,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 24.582398414611816,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 26.67899250984192,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 27.22299289703369,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 27.372841596603394,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 28.112891912460327,
+      "from": "withdrawn",
+      "to": "open"
+    },
+    {
+      "elapsed_sec": 28.263347864151,
+      "from": "open",
+      "to": "withdrawn"
+    },
+    {
+      "elapsed_sec": 29.8904287815094,
+      "from": "withdrawn",
+      "to": "open"
+    }
+  ],
+  "fragments": [],
+  "extra": {
+    "final_effect_score": 0.0,
+    "positive_count": 0,
+    "negative_count": 0,
+    "total_fragments": 325
+  }
+}

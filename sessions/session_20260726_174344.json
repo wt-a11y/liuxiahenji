@@ -1,0 +1,25 @@
+{
+  "session_id": "20260726_174344",
+  "start_time": "2026-07-26 17:43:44",
+  "end_time": "2026-07-26 17:43:50",
+  "duration_sec": 6.536170244216919,
+  "ending": "mixed",
+  "summary": {
+    "total_actions": 0,
+    "positive_actions": 0,
+    "negative_actions": 0,
+    "neutral_actions": 0,
+    "alert_total_sec": 0.0,
+    "state_transitions_count": 0,
+    "fragments_count": 0
+  },
+  "actions": [],
+  "state_transitions": [],
+  "fragments": [],
+  "extra": {
+    "final_effect_score": 0.0,
+    "positive_count": 0,
+    "negative_count": 0,
+    "total_fragments": 0
+  }
+}
