@@ -1,0 +1,11 @@
+timestamp,session_time_sec,action_type_cn,action_type,intensity,distance_px,duration_sec,speed_avg,acceleration,state_before_cn,state_before,state_after_cn,state_after,inside_personal_space
+2026-07-26T15:42:34.387620,1.54,轻柔,positive,0.100,0.0,0.09,0.0,0.0,平静,calm,敞开,open,0
+2026-07-26T15:42:50.498379,17.65,剧烈,negative,1.000,3561.0,16.01,3.7,0.0,敞开,open,退缩,withdrawn,0
+2026-07-26T15:42:51.520630,18.68,轻柔,positive,0.100,0.0,0.85,0.0,0.0,退缩,withdrawn,敞开,open,0
+2026-07-26T15:42:52.461332,19.62,轻柔,positive,0.117,31.1,0.86,0.6,0.0,敞开,open,敞开,open,0
+2026-07-26T15:42:53.409690,20.57,轻柔,positive,0.117,27.4,0.86,0.5,0.0,敞开,open,敞开,open,0
+2026-07-26T15:42:55.423475,22.58,轻柔,positive,0.119,71.8,1.88,0.6,0.0,敞开,open,敞开,open,0
+2026-07-26T15:42:56.521661,23.68,轻柔,positive,0.108,14.6,1.01,0.2,0.0,敞开,open,敞开,open,0
+2026-07-26T15:42:57.583741,24.74,轻柔,positive,0.114,15.8,0.90,0.3,0.0,敞开,open,敞开,open,0
+2026-07-26T15:43:00.839635,28.00,轻柔,positive,0.136,92.7,3.10,0.5,0.0,警觉,alert,警觉,alert,1
+2026-07-26T15:43:06.661012,33.82,轻柔,positive,0.135,242.0,5.42,0.7,0.0,警觉,alert,警觉,alert,0

@@ -31,6 +31,9 @@ from visual_effects import TrailSurface, BackgroundNoiseField, apply_post_proces
 from emotional_state import EmotionalCore, ConsequenceManager
 from reflection import ReflectionSystem, draw_pause_overlay, draw_choice_dialog, draw_ending_screen
 from spatial_metaphor import PersonalSpaceField, GravityField, StatusBar
+from data_export import DataExporter
+from intro_tutorial import show_tutorial
+from audio import init_audio, get_audio
 
 
 def main():
@@ -113,9 +116,12 @@ def _main_loop():
         font_large = pygame.font.Font(None, 64)
         font_medium = pygame.font.Font(None, 40)
 
-    # 2.5 显示启动引导界面
-    print("显示启动引导界面...")
-    _show_intro_screen(screen, font_large, font_medium, font)
+    # 2.2 初始化音效（在 pygame.init() 之后立即初始化，让 mixer 准备好）
+    audio_manager = init_audio()
+
+    # 2.5 显示新手引导（8 张引导卡，含数据导出说明）
+    print("显示新手引导界面...")
+    show_tutorial(screen, font_large, font_medium, font)
     print("用户已确认，继续初始化...")
 
     # 2.6 视觉特效初始化
@@ -124,8 +130,32 @@ def _main_loop():
     bg_noise = BackgroundNoiseField(screen_w, screen_h, resolution=16, seed=42)
 
     # 2.7 主题化系统初始化
+    # 数据导出器必须先初始化，因为 emotional_core.on_state_change 要绑定它
+    data_exporter = DataExporter()
     emotional_core = EmotionalCore()                    # 情感核心
     consequence_manager = ConsequenceManager()         # 后果管理
+
+    # 状态切换回调链：先数据导出，后音效
+    def _on_state_change_with_audio(old_state, new_state):
+        # 1. 数据导出
+        data_exporter.on_state_change(old_state, new_state)
+        # 2. 音效：只在新状态触发时播放（实时反馈）
+        if audio_manager and audio_manager.is_available():
+            new_name = new_state.value if hasattr(new_state, 'value') else str(new_state)
+            if new_name == 'alert':
+                audio_manager.play('enter_red')      # 警觉 → 高频警告音
+            elif new_name == 'withdrawn':
+                audio_manager.play('state_withdrawn') # 退缩 → 高频
+            elif new_name == 'open':
+                audio_manager.play('state_open')      # 敞开 → 低频
+            elif new_name == 'calm':
+                # 平静状态无专属音（柔和 + 静静陪伴）
+                pass
+            elif new_name == 'neglected':
+                # 被忽视状态无专属音（安静反而是表达）
+                pass
+
+    emotional_core.on_state_change = _on_state_change_with_audio
     reflection_system = ReflectionSystem(screen_w, screen_h)  # 反思系统
     target_pos = (640, 360)  # 生命体默认位置
     personal_space = PersonalSpaceField(target_pos[0], target_pos[1])  # 个人空间
@@ -196,6 +226,11 @@ def _main_loop():
                     reflection_system.choice_pending = True
                     reflection_system.time_since_last_choice = 0.0
                     print(">>> R键按下，触发选择时刻")
+                elif event.key == pygame.K_m:
+                    # M键：切换静音
+                    if audio_manager and audio_manager.is_available():
+                        muted = audio_manager.toggle_mute()
+                        print(f">>> 音效 {'已静音' if muted else '已开启'}")
 
         # ESC 键：退出（仅由 Pygame 事件处理，移除 OpenCV waitKey 提升 FPS）
 
@@ -304,6 +339,18 @@ def _main_loop():
             if len(recent_actions) > max_recent_actions:
                 recent_actions.pop(0)
 
+            # === 数据导出：记录动作前的状态 + 是否在个人空间内 ===
+            state_before = emotional_core.current_state.value
+            inside_ps = False
+            if hand_position:
+                hand_screen_x_now = hand_position.get('x', 0) * screen_w / max(getattr(_main_loop, '_frame_w', 1280), 1)
+                hand_screen_y_now = hand_position.get('y', 0) * screen_h / max(getattr(_main_loop, '_frame_h', 720), 1)
+                dx = hand_screen_x_now - target_pos[0]
+                dy = hand_screen_y_now - target_pos[1]
+                dist_to_target = (dx * dx + dy * dy) ** 0.5
+                # 用 PersonalSpaceField.INTIMATE_DISTANCE 作为"在红圈内"的判定阈值
+                inside_ps = dist_to_target < PersonalSpaceField.INTIMATE_DISTANCE
+
             if classification == 'negative':
                 emotional_core.update(0, {
                     'type': 'violent',
@@ -314,11 +361,30 @@ def _main_loop():
                     'harm', 3.0,
                     {'intensity': intensity, 'location': target_object.get_position()}
                 )
+                # 音效：剧烈画线 → 失谐双音（即时动作反馈）
+                # 与状态切换回调播放的 state_withdrawn/state_alert 不同，这是"动作力度"反馈
+                if audio_manager and audio_manager.is_available():
+                    audio_manager.play('violent')
             elif classification == 'positive':
                 emotional_core.update(0, {
                     'type': 'gentle',
                     'intensity': intensity
                 })
+                # 音效：轻柔画线 → 和弦琶音（即时动作反馈）
+                # 与状态切换回调播放的 state_open 不同，这是"动作温柔"反馈
+                if audio_manager and audio_manager.is_available():
+                    audio_manager.play('gentle')
+
+            # 记录动作后的状态
+            state_after = emotional_core.current_state.value
+
+            # === 数据导出：记录到 CSV ===
+            data_exporter.log_action(
+                action_dict,
+                state_before=state_before,
+                state_after=state_after,
+                inside_personal_space=inside_ps
+            )
 
             # 记录到后果管理器
             consequence_manager.record_action(action_dict)
@@ -386,10 +452,44 @@ def _main_loop():
             particle_system.set_emotional_tint(current_tint)
             main._last_tint = current_tint
 
+        # === 持续状态监测：停留过久时强化音频提示 ===
+        # 检测生命体在同一状态停留时间
+        if not hasattr(main, '_state_hold_start'):
+            main._state_hold_start = time.time()
+            main._state_hold_last_state = emotional_core.current_state.value
+            main._state_hold_played = set()  # 已播放的强化音（在状态切换时清空）
+        if main._state_hold_last_state != emotional_core.current_state.value:
+            main._state_hold_start = time.time()
+            main._state_hold_last_state = emotional_core.current_state.value
+            main._state_hold_played.clear()
+        # 持续 N 秒未变化 → 播放强化音（每状态最多 1 次，需切状态重置）
+        hold_threshold_sec = 6.0  # 6 秒阈值
+        if (audio_manager and audio_manager.is_available()
+                and not audio_manager.is_muted()
+                and emotional_core.current_state.value not in main._state_hold_played):
+            hold_time = time.time() - main._state_hold_start
+            cur_state = emotional_core.current_state.value
+            if hold_time >= hold_threshold_sec:
+                # 持续警示：play with low vol？
+                if cur_state == 'withdrawn':
+                    # 持续退缩：再播一次高频警示
+                    audio_manager.play('state_withdrawn')
+                elif cur_state == 'alert':
+                    audio_manager.play('enter_red')
+                elif cur_state == 'open':
+                    audio_manager.play('state_open')
+                elif cur_state == 'neglected':
+                    # 被忽视时可以使用 enter_red 提醒？
+                    pass
+                main._state_hold_played.add(cur_state)
+
         # 应用延迟后果
         for cons in triggered_consequences:
             if cons['type'] == 'harm':
                 # 延迟的伤害效果：可在目标上添加疤痕
+                # 音效：3秒延迟后播放伤害冲击音
+                if audio_manager and audio_manager.is_available():
+                    audio_manager.play('harm')
                 pass  # 由particle系统自然产生
 
         # 反思时刻检查
@@ -432,6 +532,10 @@ def _main_loop():
             if violent:
                 intensity = max(intensity, 0.8)
             emotional_core.force_alert(intensity=intensity)
+
+            # 音效：从外圈刚进入红圈时（prev_level != 2）播放警告音
+            if prev_level != 2 and audio_manager and audio_manager.is_available():
+                audio_manager.play('enter_red')
 
             # === 在红圈内持续追加"重"到时间线 ===
             # 每 1.2s 追加一条，让用户感受到"持续侵入"
@@ -723,8 +827,46 @@ def _main_loop():
         fps_text = font.render(f"FPS: {_main_loop._fps_value:.1f}", True, (200, 200, 200))
         screen.blit(fps_text, (1280 - 100, 10))
 
+        # === 静音状态显示（FPS 下方）===
+        if audio_manager and audio_manager.is_available() and audio_manager.is_muted():
+            mute_text = font.render("🔇 已静音 (M键开启)", True, (220, 100, 100))
+            screen.blit(mute_text, (1280 - 220, 35))
+
         pygame.display.flip()
         frame_count += 1
+
+    # === 退出前：保存数据导出（JSON 完整会话 + 文字报告） ===
+    try:
+        # 计算最终结局（从 target_object 获取 effect 累积）
+        try:
+            final_effect = float(target_object.effect_score) if hasattr(target_object, 'effect_score') else 0.0
+        except Exception:
+            final_effect = 0.0
+        # 根据 effect_score 决定结局
+        if final_effect > 0.3:
+            ending = "care"
+        elif final_effect < -0.3:
+            ending = "harm"
+        else:
+            ending = "mixed"
+        # 保存 JSON
+        data_exporter.save_session(
+            ending=ending,
+            extra_data={
+                'final_effect_score': final_effect,
+                'positive_count': target_object.positive_count,
+                'negative_count': target_object.negative_count,
+                'total_fragments': target_object.fragment_count,
+            }
+        )
+        # 生成并保存报告
+        report_text = data_exporter.save_report(ending=ending)
+        # 在终端打印报告（让用户看到）
+        print("\n" + report_text)
+    except Exception as e:
+        print(f"[DataExporter] 退出时保存失败：{e}")
+        import traceback
+        traceback.print_exc()
 
     # === 退出前：显示反思界面 ===
     try:
