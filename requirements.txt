@@ -1,4 +1,5 @@
-opencv-python>=4.8.0
-mediapipe>=0.10.0
-pygame>=2.5.0
-numpy>=1.24.0
+# 核心运行时依赖（最低支持版本）
+opencv-python>=4.8.0      # 摄像头捕获
+mediapipe>=0.10.0         # 手部关键点检测
+pygame>=2.5.0             # 视觉渲染与文字界面
+numpy>=1.24.0             # 数值计算

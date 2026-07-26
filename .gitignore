@@ -1,37 +1,43 @@
-# Python cache
+# Python 字节码 / 缓存
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
 
-# Virtual environments
+# 虚拟环境
 venv/
 env/
 .venv/
+ENV/
 
-# IDE settings
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
-# System files
+# 系统文件
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Environment variables
+# 环境变量
 .env
+.env.local
 
-# Build files
-build/
-dist/
-
-# Logs
+# 测试 / 调试输出
+.pytest_cache/
+.coverage
+htmlcov/
 *.log
 
-# === 本地冗余文件（不参与版本控制，但保留在本地以供调试参考） ===
-# 一次性诊断脚本
-diagnose_*.py
+# === sessions/ 目录 ===
+# 保留 sessions/ 目录本身，但忽略其下运行产生的数据文件
+sessions/*.csv
+sessions/*.json
+sessions/*.txt
 
-# 测试文件
-test_*.py
-
-# 死代码/未引用的模块
-trajectory.py
+# 仅保留目录占位文件
+!sessions/.gitkeep
