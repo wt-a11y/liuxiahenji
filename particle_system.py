@@ -291,34 +291,68 @@ class MemoryFragment:
         """
         self.emotional_tint = tint
 
-        # 状态色调映射表
-        # 偏移量会叠加到原始颜色上
-        TINT_OFFSETS = {
-            "warm":    ((+10, +5, -10), (+5, +5, -5), (+10, 0, -5), (+5, +5, 0)),  # 暖橙
-            "tense":   ((-30, -20, -10), (-20, -10, 0), (-30, -20, -10), (-15, -10, 0)),  # 偏冷
-            "healing": ((+15, +10, -5), (+20, +15, 0), (+15, +10, -5), (+10, +10, 0)),  # 明亮暖色
-            "cold":    ((-20, -10, +20), (-10, 0, +15), (-25, -15, +20), (-10, 0, +10)),  # 冷蓝
-            "sad":     ((-10, -5, +10), (-5, 0, +10), (-15, -10, +10), (-5, 0, +5)),  # 偏蓝灰
-            None:      ((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)),  # 恢复原始
+        # === 3-A 状态调色板（按情感状态直接覆盖基础色，不靠 offset） ===
+        # 每个状态有完整的 (body, inner, glow, highlight) 四元组
+        # 这样不同状态下碎片色对比鲜明，避免单一黄色
+        TINT_PALETTES = {
+            # "warm" → 警觉（暖橙——紧张但还有温度）
+            "tense": (
+                (200, 95, 80),    # body：橙红
+                (255, 170, 130),  # inner：浅橙
+                (240, 130, 90),   # glow：暖橙辉光
+                (255, 220, 200),  # highlight：暖白
+            ),
+            # "healing" → 敞开（浅绿/嫩绿——被接纳）
+            "healing": (
+                (160, 200, 145),  # body：浅绿
+                (205, 235, 175),  # inner：嫩绿
+                (185, 220, 155),  # glow：柔绿
+                (230, 250, 220),  # highlight：明亮绿白
+            ),
+            # "sad" → 退缩（冷蓝灰——压抑）
+            "sad": (
+                (110, 130, 175),  # body：冷蓝
+                (150, 170, 200),  # inner：浅冷蓝
+                (90, 110, 145),   # glow：暗冷
+                (200, 215, 235),  # highlight：冷白
+            ),
+            # "cold" → 被忽视（深灰蓝——孤独）
+            "cold": (
+                (75, 85, 115),    # body：深蓝灰
+                (115, 130, 160),  # inner：稍亮蓝灰
+                (60, 70, 95),     # glow：暗冷
+                (160, 175, 200),  # highlight：冷白
+            ),
+            # "warm" → 平静（暖金，原始默认）
+            "warm": (
+                (245, 200, 130),  # body：金黄
+                (250, 218, 170),  # inner：浅金
+                (235, 185, 130),  # glow：金辉
+                (255, 244, 222),  # highlight：暖白
+            ),
+            None: None,  # 恢复原始
         }
 
-        if tint not in TINT_OFFSETS:
+        if tint not in TINT_PALETTES:
             return
 
-        offsets = TINT_OFFSETS[tint]
-        ob, oi, og, oh = offsets
+        palette = TINT_PALETTES[tint]
+        if palette is None:
+            # 恢复原始色（但保留 classification 的 negative/positive 区分）
+            if hasattr(self, '_orig_body'):
+                self.body_color = self._orig_body
+                self.inner_color = self._orig_inner
+                self.glow_color = self._orig_glow
+                self.highlight_color = self._orig_highlight
+            return
 
-        def apply_offset(base, off):
-            return (
-                max(0, min(255, base[0] + off[0])),
-                max(0, min(255, base[1] + off[1])),
-                max(0, min(255, base[2] + off[2])),
-            )
-
-        self.body_color = apply_offset(self._orig_body, ob)
-        self.inner_color = apply_offset(self._orig_inner, oi)
-        self.glow_color = apply_offset(self._orig_glow, og)
-        self.highlight_color = apply_offset(self._orig_highlight, oh)
+        body, inner, glow, highlight = palette
+        self.body_color = body
+        self.inner_color = inner
+        self.glow_color = glow
+        self.highlight_color = highlight
+        self.base_color = self.body_color
+        self.current_color = self.body_color
 
     def update(self, target_position: Optional[Tuple[float, float]] = None):
         """
@@ -637,7 +671,8 @@ class MemoryCloud:
     def add_fragments_from_trajectory(self, trajectory: List[Tuple[int, int]],
                                      behavior_speed: float = 0.0,
                                      behavior_distance: float = 0.0,
-                                     classification: str = 'neutral'):
+                                     classification: str = 'neutral',
+                                     emotional_tint: Optional[str] = None):
         """
         从轨迹生成记忆碎片
 
@@ -649,15 +684,23 @@ class MemoryCloud:
                 - 正向：暖色柔和碎片（默认琥珀色）
                 - 负向：冷色尖锐碎片（暗紫色）
                 - 中性：默认琥珀色
+            emotional_tint: 当前生命体情感状态对应的色调。
+                          该值在 fragment 创建时锁定——之后无论状态如何变化，
+                          这个 fragment 的颜色都不会改变。
+                          （可选：'tense'/'healing'/'sad'/'cold'/'warm'/None）
         """
-        if len(trajectory) < 3:
+        if len(trajectory) < 1:
             return
 
         # 根据轨迹长度决定碎片数量
-        num_fragments = min(8, max(3, len(trajectory) // 15))
-
-        # 从轨迹中均匀采样点生成碎片
-        step = len(trajectory) // num_fragments
+        # 支持 1 点的 trajectory（过程中生成）→ 只创建 1 个
+        if len(trajectory) < 3:
+            num_fragments = 1
+            step = 1
+        else:
+            num_fragments = min(8, max(3, len(trajectory) // 15))
+            # 从轨迹中均匀采样点生成碎片
+            step = len(trajectory) // num_fragments
 
         for i in range(num_fragments):
             idx = min(i * step, len(trajectory) - 1)
@@ -675,9 +718,15 @@ class MemoryCloud:
                 behavior_distance=behavior_distance,
                 classification=classification,
             )
+            # === 关键：刚生成就锁定情感状态色 ===
+            # 标记 frozen，后续 set_emotional_tint 不会改变它
+            fragment._tint_frozen = True
+            if emotional_tint is not None:
+                fragment.set_emotional_tint(emotional_tint)
+                fragment._tint_frozen = True
             self.fragments.append(fragment)
 
-        print(f"生成 {num_fragments} 个 {classification} 记忆碎片")
+        print(f"生成 {num_fragments} 个 {classification} 记忆碎片 (tint={emotional_tint})")
         
     def set_target(self, target_position: Tuple[float, float]):
         """
@@ -1010,8 +1059,11 @@ class MemoryCloud:
         return sum(1 for f in self.fragments if f.get_state() == state)
 
     def set_emotional_tint(self, tint: Optional[str]):
-        """批量设置所有碎片的情感色调"""
+        """批量设置所有碎片的情感色调（跳过已冻结的——已生成的不再改变）"""
         for f in self.fragments:
+            # 锁定的 fragment 颜色永久不变
+            if getattr(f, '_tint_frozen', False):
+                continue
             if f.emotional_tint != tint:
                 f.set_emotional_tint(tint)
 
@@ -1045,7 +1097,8 @@ class ParticleSystem:
     def create_trace_from_trajectory(self, trajectory: List[Tuple[int, int]],
                                     behavior_speed: float = 0.0,
                                     behavior_distance: float = 0.0,
-                                    classification: str = 'neutral'):
+                                    classification: str = 'neutral',
+                                    emotional_tint: Optional[str] = None):
         """
         从轨迹创建记忆碎片
 
@@ -1054,9 +1107,12 @@ class ParticleSystem:
             behavior_speed: 行为速度
             behavior_distance: 行为距离
             classification: 行为分类（"positive" / "negative" / "neutral"）
+            emotional_tint: 当前情感状态对应的色调（'tense'/'healing'/'sad'/'cold'/'warm'/None）
+                            该值锁定在 fragment 创建时，后续不再改变
         """
         self.memory_cloud.add_fragments_from_trajectory(
-            trajectory, behavior_speed, behavior_distance, classification
+            trajectory, behavior_speed, behavior_distance, classification,
+            emotional_tint=emotional_tint
         )
         
     def update(self) -> List[Dict]:

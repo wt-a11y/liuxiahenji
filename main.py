@@ -142,8 +142,16 @@ def _main_loop():
         # 2. 音效：只在新状态触发时播放（实时反馈）
         if audio_manager and audio_manager.is_available():
             new_name = new_state.value if hasattr(new_state, 'value') else str(new_state)
+            # 警觉音效门控：必须在红圈内才播
+            in_red_zone = False
+            try:
+                in_red_zone = personal_space.warning_level == 2
+            except Exception:
+                in_red_zone = False
             if new_name == 'alert':
-                audio_manager.play('enter_red')      # 警觉 → 高频警告音
+                # 警觉只在红圈内有效——红圈外的"假警觉"不播音
+                if in_red_zone:
+                    audio_manager.play('enter_red')      # 警觉 → 高频警告音
             elif new_name == 'withdrawn':
                 audio_manager.play('state_withdrawn') # 退缩 → 高频
             elif new_name == 'open':
@@ -311,6 +319,42 @@ def _main_loop():
             current_trajectory.append((sx, sy))
             if len(current_trajectory) > max_trajectory_points:
                 current_trajectory.pop(0)
+
+            # === 过程中生成碎片（按当时情感状态染色 + 间距增大） ===
+            # 每 0.35s（约 21 帧）生成 1 个小碎片（之前 0.15s 太密）
+            # 警觉 tint 仅在红圈内生效——红圈外的"伪警觉"改回 warm
+            if not hasattr(main, '_last_inline_emit'):
+                main._last_inline_emit = 0.0
+            now = pygame.time.get_ticks() / 1000.0
+            if now - main._last_inline_emit >= 0.35:
+                main._last_inline_emit = now
+                # 当前时刻的情感状态 → tint
+                cur_state_inline = emotional_core.get_state_description()
+                in_red_zone_inline = False
+                try:
+                    in_red_zone_inline = personal_space.warning_level == 2
+                except Exception:
+                    in_red_zone_inline = False
+                # 警觉 tint 门控：红圈外不能用 tense（避免外面出现橙红"假警觉"）
+                if cur_state_inline == '警觉' and not in_red_zone_inline:
+                    tint_for_fragment = 'warm'  # 降级为基础色
+                else:
+                    tint_for_fragment = {
+                        '平静': 'warm',
+                        '警觉': 'tense',
+                        '退缩': 'sad',
+                        '敞开': 'healing',
+                        '被忽视': 'cold',
+                    }.get(cur_state_inline, 'warm')
+                # 用单点 trajectory 创建碎片（只 1 个）
+                inline_traj = [(sx, sy)]
+                particle_system.create_trace_from_trajectory(
+                    inline_traj,
+                    behavior_speed=abs(hand_position.get('speed', 0.0)),
+                    behavior_distance=0.0,
+                    classification='neutral',
+                    emotional_tint=tint_for_fragment,
+                )
         else:
             # 手彻底离开：清除轨迹
             if _main_loop._hand_lost:
@@ -352,9 +396,16 @@ def _main_loop():
                 inside_ps = dist_to_target < PersonalSpaceField.INTIMATE_DISTANCE
 
             if classification == 'negative':
+                # 红圈门控：仅在红圈内的 violent 才可能触发警觉
+                red_zone_now = False
+                try:
+                    red_zone_now = personal_space.warning_level == 2
+                except Exception:
+                    red_zone_now = False
                 emotional_core.update(0, {
                     'type': 'violent',
-                    'intensity': intensity
+                    'intensity': intensity,
+                    'in_red_zone': red_zone_now,
                 })
                 # 后果延迟：3秒后显示伤害效果
                 consequence_manager.queue_consequence(
@@ -366,9 +417,16 @@ def _main_loop():
                 if audio_manager and audio_manager.is_available():
                     audio_manager.play('violent')
             elif classification == 'positive':
+                # 红圈门控：gentle 不影响警觉（这里只为一致性记录）
+                red_zone_now = False
+                try:
+                    red_zone_now = personal_space.warning_level == 2
+                except Exception:
+                    red_zone_now = False
                 emotional_core.update(0, {
                     'type': 'gentle',
-                    'intensity': intensity
+                    'intensity': intensity,
+                    'in_red_zone': red_zone_now,
                 })
                 # 音效：轻柔画线 → 和弦琶音（即时动作反馈）
                 # 与状态切换回调播放的 state_open 不同，这是"动作温柔"反馈
@@ -392,13 +450,9 @@ def _main_loop():
             # 意图检查
             warning_info = consequence_manager.check_intention(action_dict)
 
-            # 6. 生成记忆碎片
-            if action_dict['trajectory'] and len(action_dict['trajectory']) >= 5:
-                particle_system.create_trace_from_trajectory(
-                    action_dict['trajectory'],
-                    action_dict['speed'],
-                    action_dict['distance']
-                )
+            # 6. 画线结束时，不再批量生成碎片
+            # 碎片已在画线过程中按当时情感状态实时生成（多色、自然）
+            # 这样长线下多个碎片可能是不同颜色（取决于画线过程状态切换）
 
             # 清空当前轨迹可视化
             current_trajectory.clear()
@@ -426,15 +480,35 @@ def _main_loop():
             # 节流：仅在分类变化或强度变化 > 0.4 时触发
             if (new_class != _main_loop._last_rt_class or
                 abs(real_time_intensity - _main_loop._last_rt_intensity) > 0.4):
+                # 红圈门控（实时反馈路径）
+                red_zone_rt = False
+                try:
+                    red_zone_rt = personal_space.warning_level == 2
+                except Exception:
+                    red_zone_rt = False
                 if new_class == 'negative':
-                    emotional_core.update(0, {'type': 'violent', 'intensity': real_time_intensity})
+                    emotional_core.update(0, {
+                        'type': 'violent',
+                        'intensity': real_time_intensity,
+                        'in_red_zone': red_zone_rt,
+                    })
                 elif new_class == 'positive':
-                    emotional_core.update(0, {'type': 'gentle', 'intensity': real_time_intensity})
+                    emotional_core.update(0, {
+                        'type': 'gentle',
+                        'intensity': real_time_intensity,
+                        'in_red_zone': red_zone_rt,
+                    })
                 _main_loop._last_rt_class = new_class
                 _main_loop._last_rt_intensity = real_time_intensity
 
         # === 更新主题化系统 ===
-        emotional_core.update(dt)
+        # 每帧情感推进（传入当前红圈状态用于任何路径的警觉门控）
+        red_zone_tick = False
+        try:
+            red_zone_tick = personal_space.warning_level == 2
+        except Exception:
+            red_zone_tick = False
+        emotional_core.update(dt, in_red_zone=red_zone_tick)
         triggered_consequences = consequence_manager.update(dt)
 
         # 碎片颜色根据生命体当前状态调整（只在状态变化时调用，避免每帧遍历）
@@ -471,11 +545,18 @@ def _main_loop():
             cur_state = emotional_core.current_state.value
             if hold_time >= hold_threshold_sec:
                 # 持续警示：play with low vol？
+                # 警觉强化音门控（红圈外不播）
+                in_red_zone_hold = False
+                try:
+                    in_red_zone_hold = personal_space.warning_level == 2
+                except Exception:
+                    in_red_zone_hold = False
                 if cur_state == 'withdrawn':
                     # 持续退缩：再播一次高频警示
                     audio_manager.play('state_withdrawn')
                 elif cur_state == 'alert':
-                    audio_manager.play('enter_red')
+                    if in_red_zone_hold:
+                        audio_manager.play('enter_red')
                 elif cur_state == 'open':
                     audio_manager.play('state_open')
                 elif cur_state == 'neglected':

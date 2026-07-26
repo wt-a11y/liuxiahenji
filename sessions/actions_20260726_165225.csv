@@ -1,0 +1,7 @@
+timestamp,session_time_sec,action_type_cn,action_type,intensity,distance_px,duration_sec,speed_avg,acceleration,state_before_cn,state_before,state_after_cn,state_after,inside_personal_space
+2026-07-26T16:52:26.920571,1.70,轻柔,positive,0.100,0.0,0.08,0.0,0.0,平静,calm,敞开,open,0
+2026-07-26T16:52:32.381053,7.16,轻柔,positive,0.167,380.9,5.36,1.2,0.0,敞开,open,敞开,open,0
+2026-07-26T16:52:36.336727,11.11,剧烈,negative,0.833,640.3,3.76,2.8,0.0,敞开,open,警觉,alert,0
+2026-07-26T16:52:39.687432,14.46,剧烈,negative,1.000,1548.8,2.83,9.1,0.0,退缩,withdrawn,退缩,withdrawn,0
+2026-07-26T16:52:48.398407,23.17,轻柔,positive,0.161,390.8,6.86,0.9,0.0,敞开,open,敞开,open,0
+2026-07-26T16:52:57.648786,32.42,剧烈,negative,0.749,1061.3,9.01,2.0,0.0,敞开,open,警觉,alert,0

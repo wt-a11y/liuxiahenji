@@ -63,19 +63,25 @@ class EmotionalCore:
         # 锁定期间只能被更高的优先级（WITHDRAWN=伤害）覆盖，不能被 OPEN/平静 覆盖
         self.alert_locked = False
         
-    def update(self, dt: float, interaction_data: Optional[Dict] = None):
+    def update(self, dt: float, interaction_data: Optional[Dict] = None,
+               in_red_zone: bool = False):
         """
         更新情感状态
-        
+
         Args:
             dt: 时间增量（秒）
             interaction_data: 交互数据，包含动作类型、强度等
+            in_red_zone: 触发本次交互时，手是否在红圈内
+                         True → 可触发警觉；False → 不触发警觉（只记录累计、不进入警觉）
         """
         current_time = time.time()
-        
+
         # 处理新的交互
         if interaction_data:
             self.last_interaction_time = current_time
+            # 警觉门控：仅在红圈内才允许触发警觉状态
+            if 'in_red_zone' not in interaction_data:
+                interaction_data = {**interaction_data, 'in_red_zone': in_red_zone}
             self._process_interaction(interaction_data)
         
         # 检查是否被忽视
@@ -100,6 +106,8 @@ class EmotionalCore:
         """处理交互事件，可能导致状态转换"""
         action_type = data.get('type', 'neutral')  # 'gentle', 'violent', 'approach', 'retreat'
         intensity = data.get('intensity', 0.5)  # [0, 1]
+        # 警觉门控：仅红圈内才允许触发警觉（红圈外 violent/approach 不切警觉）
+        in_red_zone = bool(data.get('in_red_zone', False))
 
         # 优先级规则：
         # WITHDRAWN（伤害/退缩） > ALERT（警觉） > OPEN（敞开） > CALM/NEGLECTED
@@ -125,7 +133,12 @@ class EmotionalCore:
             if intensity >= 0.85:
                 self._transition_to(EmotionalState.WITHDRAWN, intensity)
             else:
-                self._transition_to(EmotionalState.ALERT, intensity)
+                # 警觉门控：红圈外 violent 不切警觉
+                if in_red_zone:
+                    self._transition_to(EmotionalState.ALERT, intensity)
+                else:
+                    # 红圈外只累计 harm，不进入警觉
+                    pass
 
         elif action_type == 'gentle':
             self.cumulative_care += intensity
@@ -138,12 +151,14 @@ class EmotionalCore:
 
         elif action_type == 'approach':
             # 接近触发警觉（不再要求 intensity > 0.6 才有反应）
-            # 任何接近都会引发不同程度的警觉
-            self._transition_to(EmotionalState.ALERT, max(0.3, intensity))
+            # 警觉门控：仅红圈内接近才切警觉
+            if in_red_zone:
+                self._transition_to(EmotionalState.ALERT, max(0.3, intensity))
 
         elif action_type == 'approach_violent':
-            # 快速/粗暴接近 → 强烈警觉
-            self._transition_to(EmotionalState.ALERT, max(0.6, intensity))
+            # 快速/粗暴接近 → 强烈警觉（也仅红圈内）
+            if in_red_zone:
+                self._transition_to(EmotionalState.ALERT, max(0.6, intensity))
 
         elif action_type == 'retreat':
             # 突然远离可能加剧被忽视感

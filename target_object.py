@@ -916,27 +916,39 @@ class OrganicMembrane:
     def update(self, center_x: float, center_y: float, is_influenced: bool):
         """
         更新外膜状态
-        
+
         Args:
             center_x, center_y: 中心位置
             is_influenced: 是否被影响
         """
         self.center_x = center_x
         self.center_y = center_y
-        
-        # 1. 呼吸效果 - 随impact_level增强（更慢更微妙）
-        # 影响越大，呼吸越快、振幅越大
-        self.breathing_speed = self.base_breathing_speed * (1.0 + self.impact_level * 0.8)
-        self.breathing_amplitude = self.base_breathing_amplitude * (1.0 + self.impact_level * 0.4)
-        
+
+        # === 1-B+C: 层级呼吸 + 状态联动 ===
+        # 1-B（层级呼吸）：内层小幅快频，外层大幅慢频
+        # 1-C（状态联动）：不同情感状态下呼吸频率/振幅不同
+        base_amp = self.base_breathing_amplitude
+        base_speed = self.base_breathing_speed
+
+        # 状态对呼吸的调节倍数
+        # emotion_modifier 在 update() 调用前由 TargetObject.update() 设进来
+        emotion_mod = getattr(self, '_emotion_breath_modifier', None)
+        if emotion_mod is None:
+            emotion_mod = {'speed_mult': 1.0, 'amp_mult': 1.0, 'inner_speed_mult': 1.0}
+
+        # 内层（更紧实）呼吸：基速 × emotion 调节
+        # 外层（更松散）呼吸：基速 × 0.6 + 振幅 × 1.5
+        self.breathing_speed = base_speed * emotion_mod['speed_mult']
+        self.breathing_amplitude = base_amp * emotion_mod['amp_mult']
+
         # 影响瞬间的脉冲反馈（更柔和）
         pulse_amplitude = self.pulse_intensity * 5  # 脉冲时温和收缩/扩张
         pulse_phase = self.pulse_intensity * 0.5  # 脉冲相位偏移
-        
+
         self.breathing_phase += self.breathing_speed
         breathing_offset = math.sin(self.breathing_phase + pulse_phase) * (self.breathing_amplitude + pulse_amplitude)
         self.current_radius = self.base_radius + breathing_offset
-        
+
         # 脉冲强度衰减（更慢）
         self.pulse_intensity *= 0.96
         if self.pulse_intensity < 0.01:
@@ -945,11 +957,22 @@ class OrganicMembrane:
         # 2. 表面波动
         self.surface_wave_phase += self.surface_wave_speed
         
-        # 3. 更新每层blob的顶点
+        # 3. 更新每层blob的顶点（外层呼吸幅度更大 - 1-B 层级呼吸）
+        layer_idx = 0
+        emotion_mod = getattr(self, '_emotion_breath_modifier', {'speed_mult': 1.0, 'amp_mult': 1.0, 'inner_speed_mult': 1.0})
         for layer in self.layers:
             num_v = layer['num_vertices']
-            layer_phase = self.surface_wave_phase + layer['phase_offset']
-            
+            # 外层（layer_idx 大）：呼吸更慢、振幅更大
+            # 内层（layer_idx 0）：呼吸快、振幅小
+            if 'breath_phase' not in layer:
+                layer['breath_phase'] = self.breathing_phase * (layer_idx + 1) * 0.6 + layer['phase_offset']
+                layer['breath_amp'] = self.breathing_amplitude * (0.4 + layer_idx * 0.3)
+            layer['breath_phase'] += self.breathing_speed * (0.5 + layer_idx * 0.25)
+            layer['breath_amp'] += (self.breathing_amplitude * (0.5 + layer_idx * 0.3) - layer['breath_amp']) * 0.05
+            layer_offset = math.sin(layer['breath_phase'] + pulse_phase) * layer['breath_amp']
+            layer_phase = self.surface_wave_phase + layer['phase_offset'] + layer_offset * 0.1
+            layer_idx += 1
+
             for i in range(num_v):
                 # 每个顶点独立波动
                 target = layer['vertex_base_distances'][i] + math.sin(layer_phase + i * 0.4) * 6
@@ -1090,25 +1113,39 @@ class OrganicMembrane:
         # 使用_current_display_color（由TargetObject.update缓慢插值得到）
         # 这是基于fragment_count的目标颜色，经过color_transition_speed的平滑过渡
         display_color = getattr(self, '_current_display_color', (160, 200, 230))
-        
+
         r = display_color[0]
         g = display_color[1]
         b = display_color[2]
-        
+
         # 加入脉冲效果（影响瞬间）- 微妙
         if self.pulse_intensity > 0:
             pulse = self.pulse_intensity
             r = min(255, r + pulse * 15)
             g = min(255, g + pulse * 10)
             b = min(255, b + pulse * 5)
-        
+
+        # === 2-A 拉大四层颜色差异 ===
+        # 每层有独立色相/饱和度偏移，让四层能在半透明叠加后仍清晰分层
+        # 内层偏冷（蓝），中层偏暖，中外层偏紫，外层偏粉/红
+        layer_tints = [
+            (  0,   0,   0),   # 0: 中心基色（无偏移，最亮）
+            (-30, -45, -20),   # 1: 内层：偏冷蓝（更深，更内敛）
+            ( 25, -10,  35),   # 2: 中层：偏紫（暖冷过渡）
+            ( 55,  20,  60),   # 3: 外层：偏粉红（最外圈明显不同）
+        ]
+        tint = layer_tints[min(layer_idx, len(layer_tints) - 1)]
+        r = max(0, min(255, r + tint[0]))
+        g = max(0, min(255, g + tint[1]))
+        b = max(0, min(255, b + tint[2]))
+
         r = int(r)
         g = int(g)
         b = int(b)
-        
+
         # 透明度（外层更透明）
         alpha = int(255 * self.layers[layer_idx]['alpha'])
-        
+
         return (r, g, b, alpha)
 
 
@@ -1744,6 +1781,17 @@ class TargetObject:
         # 同步impact_level和absorbed_count到membrane
         self.membrane.impact_level = self.impact_level
         self.membrane._target_absorbed_count = self.absorbed_count
+
+        # === 1-C 状态联动：根据当前情感状态调节呼吸 ===
+        breath_mod_map = {
+            '平静':   {'speed_mult': 1.0, 'amp_mult': 1.0,  'inner_speed_mult': 1.0},
+            '警觉':   {'speed_mult': 1.8, 'amp_mult': 1.1,  'inner_speed_mult': 1.3},
+            '退缩':   {'speed_mult': 0.6, 'amp_mult': 0.5,  'inner_speed_mult': 0.7},
+            '敞开':   {'speed_mult': 1.3, 'amp_mult': 1.4,  'inner_speed_mult': 1.0},
+            '被忽视': {'speed_mult': 0.4, 'amp_mult': 0.35, 'inner_speed_mult': 0.5},
+        }
+        cur_state = getattr(self, '_current_emotional_name', '平静')
+        self.membrane._emotion_breath_modifier = breath_mod_map.get(cur_state, breath_mod_map['平静'])
 
         # 同步fragment_count到membrane
         self.membrane._target_fragment_count = self.fragment_count
