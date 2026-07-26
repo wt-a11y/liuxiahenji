@@ -53,25 +53,151 @@
 
 ### 环境要求
 
-- Python 3.8+（建议 3.11）
-- 摄像头
-- Windows / macOS / Linux
+- **Python 3.8+**（建议 3.10 / 3.11，MediaPipe 对 3.12 兼容性较差）
+- **摄像头**（内置或外接 USB 摄像头均可）
+- **操作系统**：Windows 10/11、macOS、Linux 均可
+- **内存**：建议 4GB 以上
+- **首次运行需要联网**（pip 安装依赖）
 
-### 安装
+### 一步步安装
+
+**1. 克隆或下载本仓库**
+
+```bash
+git clone https://github.com/你的用户名/仓库名.git
+cd 仓库名
+```
+
+或者直接点击 GitHub 页面上的 `Code` → `Download ZIP` 下载后解压。
+
+**2. （推荐）创建虚拟环境**
+
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+```
+
+**3. 安装依赖**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 运行
+如果 `mediapipe` 安装失败（常见于 Python 3.12+），可指定旧版 Python：
+
+```bash
+# Windows
+py -3.11 -m venv venv
+py -3.11 -m pip install -r requirements.txt
+```
+
+**4. 运行**
 
 ```bash
 python main.py
-# 或 Windows 指定 Python 版本
-py -3.11 main.py
 ```
 
-启动后会先显示 8 张引导卡，引导结束后进入主循环。
+启动后会出现 8 张引导卡，按住 `✋ 张开手掌 1.5 秒` 翻页，全部翻完后进入主交互。
+
+---
+
+## 给老师 / 评审的使用说明
+
+如果你不想自己跑代码，可以直接看：
+
+1. **演示视频**：<在此贴 B 站 / YouTube 链接，或上传到 GitHub Releases>
+2. **截图预览**：见下方「视觉预览」小节（可补充）
+3. **运行数据样例**：`sessions/` 目录下保留有 `.gitkeep`，实际运行后会自动生成示例会话文件
+
+**如果决定亲自运行体验**：
+
+| 步骤 | 操作 | 预期反馈 |
+|------|------|---------|
+| 1 | 运行 `python main.py` | 弹出窗口，显示标题卡 |
+| 2 | 在摄像头前张开手掌，保持 1.5 秒 | 翻到下一页 |
+| 3 | 重复 8 次翻完所有引导卡 | 自动进入主交互 |
+| 4 | 在镜头前缓慢移动手 | 屏幕中央的有机体会跟着你的手晃动 |
+| 5 | 静止手约 0.8 秒 | 产生一个记忆碎片，漂向有机体 |
+| 6 | 保持手部动作温柔（缓慢） | 暖琥珀色碎片，有机体变暖 |
+| 7 | 保持手部动作剧烈（快速挥动） | 暗紫色尖锐碎片，留下疤痕 |
+| 8 | 握拳保持 2 秒 | 退出程序，显示统计与反思文字 |
+
+> **首次运行请确保光线充足、面部/手部不要被遮挡。**
+
+---
+
+## 常见问题（FAQ）
+
+**Q1：运行后窗口是黑的 / 摄像头打不开？**
+- 检查系统是否允许 Python 访问摄像头（Windows 设置 → 隐私 → 摄像头）
+- 关闭其他正在使用摄像头的程序（Zoom、微信、OBS 等）
+- 尝试插拔外接 USB 摄像头
+
+**Q2：`pip install mediapipe` 报错？**
+- 确认 Python 版本 ≤ 3.11
+- 升级 pip：`python -m pip install --upgrade pip`
+- 换源安装：`pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple`
+
+**Q3：手势识别没反应？**
+- 手距离摄像头 30-80cm 效果最好
+- 手掌完全朝向镜头，五指清晰可见
+- 光线不要过暗或过曝
+- 先测试 `hand_tracking.py` 是否能正常画出手部关键点
+
+**Q4：运行卡顿？**
+- 降低摄像头分辨率（在 `hand_tracking.py` 中修改 `cap.set` 参数）
+- 关闭其他占 CPU 的程序
+- 不支持硬件加速的旧电脑可能较卡
+
+**Q5：`ModuleNotFoundError: No module named 'xxx'`？**
+- 确认已激活虚拟环境
+- 重新执行 `pip install -r requirements.txt`
+
+**Q6：导出的数据文件在哪里？**
+- `sessions/` 目录下，按时间戳命名
+- 这些文件已在 `.gitignore` 中被忽略，不会被推送到 GitHub
+
+---
+
+## 视觉预览
+
+### 1. 引导界面
+
+作品首先展示 8 张引导卡，介绍交互逻辑。观众通过 ✋ 张开手掌 1.5 秒翻页。
+
+![引导页 - 空间与距离](screenshots/01_tutorial.png)
+
+### 2. 主交互 —— 温柔
+
+缓慢、平稳的手部移动产生暖琥珀色的记忆碎片，有机体保持"敞开"状态。
+
+![主交互 - 轻柔动作](screenshots/02_interaction_gentle.png)
+
+### 3. 主交互 —— 剧烈
+
+快速挥动产生暗紫色尖锐碎片，密集渗入有机体，留下暗疤痕。
+
+![主交互 - 剧烈动作](screenshots/03_interaction_heavy.png)
+
+### 4. 反思 / 结局
+
+握拳退出后，呈现本次互动的统计、关系质量与反思文字。
+
+![反思界面](screenshots/04_reflection.png)
+
+---
+
+## 注意事项
+
+- 本作品**需要摄像头权限**，无摄像头无法体验
+- 手势识别基于 MediaPipe，对光线和手部朝向有一定要求
+- 所有会话数据保存在本地 `sessions/` 目录，**不上传任何服务器**
+- 适合室内安静环境体验，背景杂乱会影响识别准确度
 
 ---
 
